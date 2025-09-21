@@ -235,7 +235,7 @@ def train_model(**context):
         
         mlflow.log_metrics(metrics)
         
-        # Log modelo
+        # Log modelo en MLflow
         model_name = Variable.get("model_name", default_var="heart_disease_classifier")
         mlflow.sklearn.log_model(
             model.model,
@@ -243,12 +243,21 @@ def train_model(**context):
             registered_model_name=model_name
         )
         
+        # Guardar modelo localmente también
+        try:
+            local_model_path = f"/opt/airflow/models/{model_name}_{context['ts_nodash']}.pkl"
+            model.save_model(local_model_path)
+            logger.info(f"Modelo guardado localmente en: {local_model_path}")
+        except Exception as e:
+            logger.error(f"Error guardando modelo localmente: {str(e)}")
+        
         logger.info(f"Modelo entrenado con accuracy: {metrics['accuracy']:.4f}")
         
         return {
             "accuracy": metrics['accuracy'],
             "model_name": model_name,
-            "metrics": metrics
+            "metrics": metrics,
+            "local_model_path": local_model_path
         }
 
 def evaluate_model(**context):
@@ -261,7 +270,48 @@ def evaluate_model(**context):
     logger.info(f"Accuracy del modelo: {train_results['accuracy']:.4f}")
     logger.info(f"Modelo registrado como: {train_results['model_name']}")
     
+    # Mostrar información del modelo guardado localmente
+    if 'local_model_path' in train_results:
+        logger.info(f"Modelo guardado localmente en: {train_results['local_model_path']}")
+        
+        # Verificar que el archivo existe
+        if os.path.exists(train_results['local_model_path']):
+            file_size = os.path.getsize(train_results['local_model_path'])
+            logger.info(f"Tamaño del archivo del modelo: {file_size} bytes")
+        else:
+            logger.warning("El archivo del modelo local no se encontró")
+    
     return train_results
+
+def cleanup_old_models(**context):
+    """Limpiar modelos antiguos (opcional)"""
+    logger.info("Limpiando modelos antiguos...")
+    
+    try:
+        models_dir = "/opt/airflow/models"
+        if os.path.exists(models_dir):
+            # Listar archivos de modelos
+            model_files = [f for f in os.listdir(models_dir) if f.endswith('.pkl')]
+            logger.info(f"Modelos encontrados: {len(model_files)}")
+            
+            # Mantener solo los últimos 5 modelos
+            if len(model_files) > 5:
+                model_files.sort(reverse=True)  # Ordenar por fecha (más reciente primero)
+                files_to_delete = model_files[5:]  # Tomar todos excepto los primeros 5
+                
+                for file_to_delete in files_to_delete:
+                    file_path = os.path.join(models_dir, file_to_delete)
+                    os.remove(file_path)
+                    logger.info(f"Modelo antiguo eliminado: {file_to_delete}")
+            else:
+                logger.info("No hay modelos antiguos para eliminar")
+        else:
+            logger.warning("Directorio de modelos no encontrado")
+            
+    except Exception as e:
+        logger.error(f"Error en limpieza de modelos: {str(e)}")
+    
+    return "Limpieza completada"
 
 # Definir tareas del DAG
 setup_mlflow_task = PythonOperator(
@@ -294,5 +344,11 @@ evaluate_model_task = PythonOperator(
     dag=dag
 )
 
+cleanup_models_task = PythonOperator(
+    task_id='cleanup_old_models',
+    python_callable=cleanup_old_models,
+    dag=dag
+)
+
 # Definir dependencias
-setup_mlflow_task >> extract_data_task >> preprocess_data_task >> train_model_task >> evaluate_model_task
+setup_mlflow_task >> extract_data_task >> preprocess_data_task >> train_model_task >> evaluate_model_task >> cleanup_models_task
