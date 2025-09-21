@@ -81,7 +81,6 @@ mlartifacts/
 *.pb
 
 # Data files (if stored locally)
-*.csv
 *.parquet
 *.json
 *.xlsx
