@@ -1,0 +1,128 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Airflow logs and temporary files
+airflow/logs/
+airflow/plugins/__pycache__/
+airflow/dags/__pycache__/
+airflow/config/airflow.cfg
+airflow/config/webserver_config.py
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker volumes and data
+postgres_data/
+minio_data/
+db_data/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+temp/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# MLflow artifacts (if stored locally)
+mlruns/
+mlartifacts/
+
+# Model files (if stored locally)
+*.pkl
+*.joblib
+*.h5
+*.pb
+
+# Data files (if stored locally)
+*.csv
+*.parquet
+*.json
+*.xlsx
+*.xls
+
+# Log files
+*.log
+logs/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Secrets and sensitive files
+secrets/
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Compressed files
+*.zip
+*.tar.gz
+*.rar
+*.7z

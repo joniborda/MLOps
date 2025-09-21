@@ -1,0 +1,5 @@
+mlflow[extras]~=2.10
+boto3~=1.34
+pandas~=2.0
+scikit-learn~=1.3
+numpy~=1.24
