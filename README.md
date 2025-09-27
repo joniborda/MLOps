@@ -1,5 +1,5 @@
 # MLOps - Proyecto Final
-### Aprendizaje de Máquina II - CEIA - FIUBA
+### Aprendizaje de Máquina I - CEIA - FIUBA
 
 Este proyecto implementa un ambiente productivo completo de MLOps utilizando Docker y Docker Compose. Incluye todos los servicios necesarios para el ciclo de vida completo de machine learning, desde el entrenamiento hasta el despliegue de modelos.
 

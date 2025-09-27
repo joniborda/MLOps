@@ -1,4 +1,14 @@
 """
+# Integrantes
+
+1. Sebastian Biagiola
+2. Erlin Rey
+3. Santiago Casado
+5. Daniel Bazán
+6. Jonathan Matias Borda
+"""
+
+"""
 DAG para el pipeline de MLOps
 Este DAG implementa un pipeline completo de machine learning que incluye:
 1. Extracción de datos
