@@ -3,6 +3,14 @@
 
 Este proyecto implementa un ambiente productivo completo de MLOps utilizando Docker y Docker Compose. Incluye todos los servicios necesarios para el ciclo de vida completo de machine learning, desde el entrenamiento hasta el despliegue de modelos.
 
+## Integrantes
+
+1. Sebastian Biagiola
+2. Erlin Rey
+3. Santiago Casado
+5. Daniel Bazán
+6. Jonathan Matias Borda
+
 ## Servicios Incluidos
 
 - **Apache Airflow**: Orquestación de workflows y pipelines de ML
