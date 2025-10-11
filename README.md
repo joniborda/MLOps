@@ -16,14 +16,15 @@ Este repositorio contiene un pipeline completo de MLOps para la clasificación d
 ### Tabla de Contenidos
 1.  [Características](#características)
 2.  [Arquitectura del Sistema](#arquitectura-del-sistema)
-3.  [Requisitos Previos](#requisitos-previos)
-4.  [Instalación](#instalación)
-5.  [Uso del Sistema](#uso-del-sistema)
-6.  [Descripción del Pipeline de Machine Learning](#descripción-del-pipeline-de-machine-learning)
-7.  [Referencia de la API](#referencia-de-la-api)
-8.  [Solución de Problemas](#solución-de-problemas)
-9.  [Contribuciones](#contribuciones)
-10. [Equipo](#equipo)
+3.  [Estructura del Proyecto](#estructura-del-proyecto)
+4.  [Requisitos Previos](#requisitos-previos)
+5.  [Instalación](#instalación)
+6.  [Uso del Sistema](#uso-del-sistema)
+7.  [Descripción del Pipeline de Machine Learning](#descripción-del-pipeline-de-machine-learning)
+8.  [Referencia de la API](#referencia-de-la-api)
+9.  [Solución de Problemas](#solución-de-problemas)
+10. [Contribuciones](#contribuciones)
+11. [Equipo](#equipo)
 
 ---
 
@@ -64,6 +65,37 @@ Este repositorio contiene un pipeline completo de MLOps para la clasificación d
 └─────────┘
 
 ````
+
+---
+
+## Estructura del Proyecto
+
+```
+MLOps/
+├── airflow/
+│   ├── dags/                    # DAGs de Airflow
+│   ├── logs/                    # Logs de Airflow
+│   ├── plugins/                 # Plugins de Airflow
+│   ├── config/                  # Configuración de Airflow
+│   └── secrets/                 # Variables y conexiones
+├── data/                        # Datasets y datos
+│   └── heart.csv               # Dataset de enfermedades cardíacas
+├── models/                      # Modelos entrenados guardados localmente
+├── scripts/                     # Lógica del modelo y utilidades
+│   ├── model_utils.py          # Clase principal del modelo
+│   ├── train_model_example.py  # Ejemplo de entrenamiento
+│   └── requirements.txt        # Dependencias de los scripts
+├── dockerfiles/                 # Dockerfiles para cada servicio
+│   ├── airflow/
+│   ├── fastapi/
+│   ├── mlflow/
+│   └── postgres/
+├── docker-compose.yaml          # Configuración de servicios
+├── env.example                  # Variables de entorno de ejemplo
+└── mlflow_hyperparameter_tuning.py  # Script de ejemplo MLflow
+```
+
+---
 
 #### Componentes Principales
 | Componente | Descripción | Puerto |
