@@ -1,14 +1,4 @@
 """
-# Integrantes
-
-1. Sebastian Biagiola
-2. Erlin Rey
-3. Santiago Casado
-5. Daniel Bazán
-6. Jonathan Matias Borda
-"""
-
-"""
 DAG para el pipeline de MLOps
 Este DAG implementa un pipeline completo de machine learning que incluye:
 1. Extracción de datos
@@ -18,6 +8,7 @@ Este DAG implementa un pipeline completo de machine learning que incluye:
 5. Registro en MLflow
 """
 
+import yaml
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -29,6 +20,7 @@ from typing import Any, Dict
 
 # Agregar el directorio scripts al path
 sys.path.append('/opt/airflow/scripts')
+sys.path.append('/opt/airflow/scripts/models')
 
 # Configuración del DAG
 default_args = {
@@ -67,11 +59,11 @@ def create_s3_client():
     )
 
 
-def create_model(random_state=42):
-    """Instanciar el modelo sin cargarlo durante el parseo del DAG."""
-    from model_utils import HeartDiseaseModel
+# def create_model(random_state=42):
+#     """Instanciar el modelo sin cargarlo durante el parseo del DAG."""
+#     from DummyModel import DummyModel
 
-    return HeartDiseaseModel(random_state=random_state)
+#     return DummyModel(random_state=random_state)
 
 def setup_mlflow():
     """Configurar MLflow"""
@@ -103,10 +95,13 @@ def setup_mlflow():
 
 def extract_data(**context):
     """Extraer datos del dataset de enfermedades cardíacas"""
+    from create_sample_data import DataGenerator
+    from CreateModel import CreateModel
     logger.info("Extrayendo datos...")
     
     # Crear instancia del modelo
-    model = create_model(random_state=42)
+    model = CreateModel(model_type='dummy')
+    #model = create_model(random_state=42)
     
     # Intentar cargar datos reales primero
     local_data_path = "/opt/airflow/data/heart.csv"
@@ -115,7 +110,7 @@ def extract_data(**context):
         data = model.load_data(local_data_path)
     else:
         logger.info("Datos reales no encontrados, creando datos de muestra")
-        data = model.create_sample_data()
+        data = DataGenerator.create_sample_data(n_samples=1000, seed=10)
     
     # Guardar datos en S3 (MinIO)
     bucket_name = os.getenv("AIRFLOW_VAR_S3_BUCKET_NAME")
@@ -140,12 +135,14 @@ def extract_data(**context):
 
 def preprocess_data(**context):
     """Preprocesar los datos"""
+    from CreateModel import CreateModel
     logger.info("Preprocesando datos...")
 
     import pandas as pd
 
     # Crear instancia del modelo
-    model = create_model(random_state=42)
+    model = CreateModel(model_type='dummy')
+    #model = create_model(random_state=42)
 
     bucket_name = os.getenv("AIRFLOW_VAR_S3_BUCKET_NAME")
     if bucket_name is None:
@@ -233,28 +230,33 @@ def _load_processed_data():
 
     return X_train, y_train, X_test, y_test
 
-def _train_and_log_model(params, run_name, context):
+def _train_and_log_model(model_type = 'random_forest', model_params=None, run_name=None, context=None):
     """Entrenar el modelo con parámetros dados y registrar resultados en MLflow."""
+    from CreateModel import CreateModel
+    
     setup_mlflow()
     import mlflow
     import mlflow.sklearn
-
+    
+    logger.info(f"Entrenando modelo {model_type}...")
+    
     X_train, y_train, X_test, y_test = _load_processed_data()
-    model = create_model(random_state=params.get("random_state", 42))
+    model = CreateModel(model_type=model_type, random_state=42)
+    #model = create_model(random_state=params.get("random_state", 42))
 
     run_name = run_name or "model_training"
-    logger.info("Iniciando entrenamiento para variante '%s'", run_name)
+    logger.info(f"Iniciando entrenamiento de modelo {model_type}, variante {run_name}")
 
     with mlflow.start_run(run_name=run_name):
-        model.train_model(X_train, y_train, **params)
+        model.train_model(X_train, y_train, **model_params)
         metrics = model.evaluate_model(X_test, y_test)
 
-        mlflow.log_params({**params, "train_samples": len(X_train), "test_samples": len(X_test)})
+        mlflow.log_params({**model_params, "train_samples": len(X_train), "test_samples": len(X_test)})
         mlflow.log_metrics(metrics)
 
         model_name = os.getenv("AIRFLOW_VAR_MODEL_NAME")
         if model_name is None:
-            model_name = Variable.get("model_name", default_var="heart_disease_classifier")
+            model_name = Variable.get("model_name", default_var=f"{model_type}_classifier")
         mlflow.sklearn.log_model(model.model, "model", registered_model_name=model_name)
 
         ts_suffix = context.get('ts_nodash')
@@ -272,17 +274,20 @@ def _train_and_log_model(params, run_name, context):
             logger.exception("Error guardando modelo localmente")
 
         logger.info(
-            "Variante '%s' entrenada con accuracy: %.4f",
+            "Modelo '%s', variante '%s', entrenada con accuracy: %.4f",
+            model_type,
             run_name,
             metrics.get("accuracy", 0.0)
         )
 
         return {
+            "model_type": model_type,
             "accuracy": metrics.get("accuracy"),
             "model_name": model_name,
             "metrics": metrics,
             "local_model_path": local_model_path,
-            "params": params,
+            #"params": params,
+            "model_params": model_params,
             "run_name": run_name,
         }
 
@@ -291,37 +296,41 @@ def run_single_training(params, run_name, **context):
     return _train_and_log_model(params, run_name, context)
 
 
-def train_model(**context):
-    """Entrenar el modelo de machine learning base"""
-    logger.info("Entrenando modelo base...")
+def train_model(model_type = 'random_forest', **context):
+    """Entrenar el modelo de machine learning"""
+    logger.info(f"Entrenando modelo {model_type}...")
 
-    default_params = {
-        'n_estimators': 100,
-        'max_depth': 10,
-        'min_samples_split': 5,
-        'min_samples_leaf': 2,
-        'random_state': 42
-    }
+    try:
+        with open("/opt/airflow/config/model_params.yaml", "r") as f:
+            all_params = yaml.safe_load(f)
+            model_params = all_params.get(model_type, {})
+            if not model_params:
+                raise ValueError(f"No se encontraron parámetros para el modelo {model_type}")
+    except Exception as e:
+        logger.error(f"Error cargando parámetros del modelo: {str(e)}")
+        raise
 
-    return _train_and_log_model(default_params, "heart_disease_classification", context)
+    return _train_and_log_model(model_type, model_params, "heart_disease_classification", context)
 
 def evaluate_model(**context):
     """Evaluar el modelo entrenado"""
     logger.info("Evaluando modelo...")
-    
-    # Obtener resultados del entrenamiento
-    train_results = context['task_instance'].xcom_pull(task_ids='train_model')
 
-    if not train_results:
-        logger.warning("No se encontraron resultados de entrenamiento para evaluar")
-        return {}
+    train_task_id = context['params'].get('train_task_id') or context['ti'].task.op_kwargs.get('train_task_id')
     
-    accuracy = train_results.get('accuracy')
-    if accuracy is not None:
-        logger.info(f"Accuracy del modelo: {accuracy:.4f}")
-    else:
-        logger.info("Accuracy del modelo no disponible")
+    if not train_task_id:
+        logger.error("No se especificó train_task_id")
+        raise ValueError("train_task_id no especificado")
+    
+    logger.info(f"Buscando resultados de la tarea: {train_task_id}")
+    
+    # Obtener resultados del entrenamiento específico
+    train_results = context['ti'].xcom_pull(task_ids=train_task_id, key='return_value')
 
+    if train_results is None:
+        logger.error(f"No se encontraron resultados XCom para la tarea: {train_task_id}")
+    
+    logger.info(f"Accuracy del modelo: {train_results['accuracy']:.4f}")
     logger.info(f"Modelo registrado como: {train_results['model_name']}")
     
     # Mostrar información del modelo guardado localmente
@@ -368,44 +377,75 @@ def cleanup_old_models(**context):
     return "Limpieza completada"
 
 
-def compare_models(**context):
-    """Comparar resultados de entrenamiento y registrar el mejor modelo."""
-    logger.info("Comparando variantes de modelos...")
+# def compare_models(**context):
+#     """Comparar resultados de entrenamiento y registrar el mejor modelo."""
+#     logger.info("Comparando variantes de modelos...")
 
-    task_instance = context['task_instance']
-    task_ids = ['train_model', 'train_rf_depth10', 'train_rf_depth6']
+#     task_instance = context['task_instance']
+#     task_ids = ['train_model', 'train_rf_depth10', 'train_rf_depth6']
+#     results = []
+
+#     for task_id in task_ids:
+#         result = task_instance.xcom_pull(task_ids=task_id)
+#         if result:
+#             result_copy = result.copy()
+#             result_copy['source_task'] = task_id
+#             results.append(result_copy)
+#             logger.info(
+#                 "Resultados %s -> accuracy: %s",
+#                 result_copy.get('run_name', task_id),
+#                 result_copy.get('accuracy')
+#             )
+#         else:
+#             logger.warning("No se encontraron resultados para la tarea %s", task_id)
+
+#     if not results:
+#         logger.error("No hay resultados para comparar")
+#         raise ValueError("No se encontraron resultados de entrenamiento para comparar")
+
+#     def accuracy_key(item):
+#         accuracy = item.get('accuracy')
+#         return accuracy if accuracy is not None else float('-inf')
+
+#     best_model = max(results, key=accuracy_key)
+
+#     logger.info(
+#         "Mejor variante: %s (tarea %s) con accuracy %.4f",
+#         best_model.get('run_name', best_model['source_task']),
+#         best_model['source_task'],
+#         best_model.get('accuracy', 0.0)
+#     )
+
+#     return best_model
+
+def select_best_model(**context):
+    logger.info("Seleccionando el mejor modelo...")
+
+    # Recuperar resultados de evaluación de cada modelo
+    task_ids = ['evaluate_rf', 'evaluate_lr', 'evaluate_svm']
     results = []
 
     for task_id in task_ids:
-        result = task_instance.xcom_pull(task_ids=task_id)
+        result = context['ti'].xcom_pull(task_ids=task_id)
         if result:
-            result_copy = result.copy()
-            result_copy['source_task'] = task_id
-            results.append(result_copy)
-            logger.info(
-                "Resultados %s -> accuracy: %s",
-                result_copy.get('run_name', task_id),
-                result_copy.get('accuracy')
-            )
-        else:
-            logger.warning("No se encontraron resultados para la tarea %s", task_id)
+            results.append(result)
 
     if not results:
-        logger.error("No hay resultados para comparar")
-        raise ValueError("No se encontraron resultados de entrenamiento para comparar")
+        logger.error("No se encontraron resultados de evaluación.")
+        raise ValueError("No hay resultados de evaluación para comparar.")
 
-    def accuracy_key(item):
-        accuracy = item.get('accuracy')
-        return accuracy if accuracy is not None else float('-inf')
+    # Elegir el mejor modelo según accuracy
+    best_model = max(results, key=lambda x: x['accuracy'])
+    logger.info(f"Mejor modelo: {best_model['model_type']} con accuracy {best_model['accuracy']:.4f}")
 
-    best_model = max(results, key=accuracy_key)
+    # Guardar como Variable global de Airflow (opcional)
+    logger.info(f"Guardando Variable global de Airflow:")
+    Variable.set("best_model_type", str(best_model.get('model_type', '')))
+    Variable.set("best_model_accuracy", str(best_model.get('accuracy', 0)))
 
-    logger.info(
-        "Mejor variante: %s (tarea %s) con accuracy %.4f",
-        best_model.get('run_name', best_model['source_task']),
-        best_model['source_task'],
-        best_model.get('accuracy', 0.0)
-    )
+    logger.info(f"Variables guardadas:")
+    logger.info(f"  - best_model_type: {best_model.get('model_type')}")
+    logger.info(f"  - best_model_accuracy: {best_model.get('accuracy'):.4f}")
 
     return best_model
 
@@ -428,17 +468,69 @@ preprocess_data_task = PythonOperator(
     dag=dag
 )
 
-train_model_task = PythonOperator(
-    task_id='train_model',
+# train_model_task = PythonOperator(
+#     task_id='train_model',
+#     python_callable=train_model,
+#     pool="ml_training_pool",
+#     pool_slots=1,
+#     dag=dag
+# )
+
+# Distintos modelos de entrenamiento (en paralelo)
+train_rf = PythonOperator(
+    task_id="train_random_forest",
     python_callable=train_model,
-    pool="ml_training_pool",
-    pool_slots=1,
+    op_kwargs={"model_type": "random_forest"},
     dag=dag
 )
 
-evaluate_model_task = PythonOperator(
-    task_id='evaluate_model',
+train_lr = PythonOperator(
+    task_id="train_logistic_regression",
+    python_callable=train_model,
+    op_kwargs={"model_type": "logistic_regression"},
+    dag=dag
+)
+
+train_svm = PythonOperator(
+    task_id="train_svm",
+    python_callable=train_model,
+    op_kwargs={"model_type": "svm"},
+    dag=dag
+)
+
+
+# evaluate_model_task = PythonOperator(
+#     task_id='evaluate_model',
+#     python_callable=evaluate_model,
+#     dag=dag
+# )
+
+# Evaluar los distintos modelos
+evaluate_rf_task = PythonOperator(
+    task_id='evaluate_rf',
     python_callable=evaluate_model,
+    op_kwargs={'train_task_id': 'train_random_forest'},
+    dag=dag
+)
+
+evaluate_lr_task = PythonOperator(
+    task_id='evaluate_lr',
+    python_callable=evaluate_model,
+    op_kwargs={'train_task_id': 'train_logistic_regression'},
+    dag=dag
+)
+
+evaluate_svm_task = PythonOperator(
+    task_id='evaluate_svm',
+    python_callable=evaluate_model,
+    op_kwargs={'train_task_id': 'train_svm'},
+    dag=dag
+)
+
+# Seleccion del mejor modelo
+select_best_model_task = PythonOperator(
+    task_id='select_best_model',
+    python_callable=select_best_model,
     dag=dag
 )
 
@@ -448,45 +540,60 @@ cleanup_models_task = PythonOperator(
     dag=dag
 )
 
-compare_models_task = PythonOperator(
-    task_id='compare_models',
-    python_callable=compare_models,
-    dag=dag
-)
+# compare_models_task = PythonOperator(
+#     task_id='compare_models',
+#     python_callable=compare_models,
+#     dag=dag
+# )
 
-rf_depth10_task = PythonOperator(
-    task_id="train_rf_depth10",
-    python_callable=run_single_training,
-    op_kwargs={
-        "params": {"n_estimators": 100, "max_depth": 10, "min_samples_split": 5,
-                   "min_samples_leaf": 2, "random_state": 42},
-        "run_name": "rf_depth10",
-    },
-    pool="ml_training_pool",
-    pool_slots=1,
-    dag=dag,
-)
+# rf_depth10_task = PythonOperator(
+#     task_id="train_rf_depth10",
+#     python_callable=run_single_training,
+#     op_kwargs={
+#         "params": {"n_estimators": 100, "max_depth": 10, "min_samples_split": 5,
+#                    "min_samples_leaf": 2, "random_state": 42},
+#         "run_name": "rf_depth10",
+#     },
+#     pool="ml_training_pool",
+#     pool_slots=1,
+#     dag=dag,
+# )
 
-rf_depth6_task = PythonOperator(
-    task_id="train_rf_depth6",
-    python_callable=run_single_training,
-    op_kwargs={
-        "params": {"n_estimators": 200, "max_depth": 6, "min_samples_split": 4,
-                   "min_samples_leaf": 1, "random_state": 123},
-        "run_name": "rf_depth6",
-    },
-    pool="ml_training_pool",
-    pool_slots=1,
-    dag=dag,
-)
+# rf_depth6_task = PythonOperator(
+#     task_id="train_rf_depth6",
+#     python_callable=run_single_training,
+#     op_kwargs={
+#         "params": {"n_estimators": 200, "max_depth": 6, "min_samples_split": 4,
+#                    "min_samples_leaf": 1, "random_state": 123},
+#         "run_name": "rf_depth6",
+#     },
+#     pool="ml_training_pool",
+#     pool_slots=1,
+#     dag=dag,
+# )
 
 
 # Definir dependencias
-setup_mlflow_task >> extract_data_task >> preprocess_data_task
+# setup_mlflow_task >> extract_data_task >> preprocess_data_task
 
-preprocess_data_task >> train_model_task >> evaluate_model_task
+# preprocess_data_task >> train_model_task >> evaluate_model_task
 
-# Ejecutar variantes en paralelo una vez que el modelo base fue evaluado
-evaluate_model_task >> [rf_depth10_task, rf_depth6_task]
+# # Ejecutar variantes en paralelo una vez que el modelo base fue evaluado
+# evaluate_model_task >> [rf_depth10_task, rf_depth6_task]
 
-[rf_depth10_task, rf_depth6_task] >> compare_models_task >> cleanup_models_task
+# [rf_depth10_task, rf_depth6_task] >> compare_models_task >> cleanup_models_task
+
+# Definir dependencias
+setup_mlflow_task >>  extract_data_task >> preprocess_data_task
+
+# Conecta la tarea de preprocesamiento con las tareas de entrenamiento en paralelo
+preprocess_data_task >> [train_rf, train_lr, train_svm]
+
+# Conecta cada tarea de entrenamiento con su respectiva tarea de evaluación
+train_rf >> evaluate_rf_task
+train_lr >> evaluate_lr_task
+train_svm >> evaluate_svm_task
+
+[evaluate_rf_task, evaluate_lr_task, evaluate_svm_task] >> select_best_model_task
+
+select_best_model_task >> cleanup_models_task

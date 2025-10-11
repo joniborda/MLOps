@@ -19,7 +19,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class GeneradorDatos:
+class DataGenerator:
     """
     Clase para la generación de datos de muestra.
     """
