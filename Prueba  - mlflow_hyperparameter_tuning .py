@@ -1,145 +1,95 @@
-"""
-Ejemplo de experimento MLflow con búsqueda de hiperparámetros
-Este script demuestra cómo usar MLflow para experimentar con diferentes hiperparámetros
-y registrar los mejores modelos.
-"""
-
 import mlflow
 import mlflow.sklearn
 import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.datasets import make_classification
 import os
 import logging
+from typing import Tuple, List, Dict, Any
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def setup_mlflow():
-    """Configurar MLflow"""
-    # Configurar tracking URI
-    mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-    mlflow.set_tracking_uri(mlflow_tracking_uri)
-    
-    # Crear o usar experimento existente
-    experiment_name = "hyperparameter_tuning_experiment"
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+EXPERIMENT_NAME = "hyperparameter_tuning_experiment_optimized"
+REGISTERED_MODEL_NAME = "heart_disease_classifier_optimized"
+RANDOM_STATE = 42
+FEATURE_NAMES = [
+    'age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg',
+    'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal'
+]
+
+def setup_mlflow() -> str:
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     try:
-        experiment_id = mlflow.create_experiment(experiment_name)
-        logger.info(f"Created experiment: {experiment_name} with ID: {experiment_id}")
+        experiment_id = mlflow.create_experiment(EXPERIMENT_NAME)
+        logger.info(f"Created experiment: {EXPERIMENT_NAME} with ID: {experiment_id}")
     except mlflow.exceptions.MlflowException:
-        experiment_id = mlflow.get_experiment_by_name(experiment_name).experiment_id
-        logger.info(f"Using existing experiment: {experiment_name} with ID: {experiment_id}")
+        experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
+        experiment_id = experiment.experiment_id
+        logger.info(f"Using existing experiment: {EXPERIMENT_NAME} with ID: {experiment_id}")
     
-    mlflow.set_experiment(experiment_name)
+    mlflow.set_experiment(EXPERIMENT_NAME)
     return experiment_id
 
-def create_synthetic_data():
-    """Crear datos sintéticos para el experimento"""
-    logger.info("Creando datos sintéticos...")
-    
-    # Crear dataset sintético
+def create_synthetic_data() -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    logger.info("Creating synthetic data...")
     X, y = make_classification(
         n_samples=1000,
         n_features=13,
         n_informative=10,
         n_redundant=3,
         n_classes=2,
-        random_state=42
+        random_state=RANDOM_STATE
     )
     
-    # Crear nombres de características
-    feature_names = [
-        'age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg',
-        'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal'
-    ]
+    X_df = pd.DataFrame(X, columns=FEATURE_NAMES)
     
-    # Crear DataFrame
-    df = pd.DataFrame(X, columns=feature_names)
-    df['target'] = y
-    
-    # Dividir en train y test
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+        X_df, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y
     )
     
-    return X_train, X_test, y_train, y_test, df
+    return X_train, X_test, y_train, y_test
 
-def train_and_log_model(X_train, X_test, y_train, y_test, params, run_name):
-    """Entrenar modelo y registrar en MLflow"""
-    
-    with mlflow.start_run(run_name=run_name):
-        # Crear modelo con parámetros específicos
-        model = RandomForestClassifier(
-            n_estimators=params['n_estimators'],
-            max_depth=params['max_depth'],
-            min_samples_split=params['min_samples_split'],
-            min_samples_leaf=params['min_samples_leaf'],
-            random_state=42
-        )
-        
-        # Entrenar modelo
-        model.fit(X_train, y_train)
-        
-        # Hacer predicciones
+def log_model_to_mlflow(
+    model: RandomForestClassifier, 
+    X_test: pd.DataFrame, 
+    y_test: pd.Series,
+    run_name: str
+) -> Dict[str, Any]:
+    with mlflow.start_run(run_name=run_name) as run:
         y_pred = model.predict(X_test)
-        y_pred_proba = model.predict_proba(X_test)[:, 1]
         
-        # Calcular métricas
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
+        metrics = {
+            "accuracy": accuracy_score(y_test, y_pred),
+            "precision": precision_score(y_test, y_pred),
+            "recall": recall_score(y_test, y_pred),
+            "f1_score": f1_score(y_test, y_pred)
+        }
         
-        # Log parámetros
-        mlflow.log_params(params)
+        mlflow.log_params(model.get_params())
+        mlflow.log_metrics(metrics)
         
-        # Log métricas
-        mlflow.log_metrics({
-            "accuracy": accuracy,
-            "precision": precision,
-            "recall": recall,
-            "f1_score": f1
-        })
-        
-        # Log modelo
         mlflow.sklearn.log_model(
-            model,
-            "model",
-            registered_model_name="heart_disease_classifier"
+            sk_model=model,
+            artifact_path="model",
+            registered_model_name=REGISTERED_MODEL_NAME
         )
         
-        # Log datos de ejemplo
-        sample_data = pd.DataFrame(X_test[:5], columns=[
-            'age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg',
-            'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal'
-        ])
+        sample_data = X_test.head(5)
         mlflow.log_table(sample_data, "sample_predictions.json")
         
-        logger.info(f"Run {run_name}: Accuracy={accuracy:.4f}, F1={f1:.4f}")
+        logger.info(f"Run '{run_name}' logged with F1 score: {metrics['f1_score']:.4f}")
         
-        return {
-            "accuracy": accuracy,
-            "precision": precision,
-            "recall": recall,
-            "f1_score": f1,
-            "model": model
-        }
+        return {**metrics, "model": model, "run_id": run.info.run_id}
 
-def hyperparameter_tuning():
-    """Realizar búsqueda de hiperparámetros"""
-    logger.info("Iniciando búsqueda de hiperparámetros...")
-    
-    # Configurar MLflow
+def perform_hyperparameter_tuning() -> Dict[str, Any]:
+    logger.info("Starting hyperparameter tuning...")
     setup_mlflow()
+    X_train, X_test, y_train, y_test = create_synthetic_data()
     
-    # Crear datos
-    X_train, X_test, y_train, y_test, df = create_synthetic_data()
-    
-    # Definir grid de hiperparámetros
     param_grid = {
         'n_estimators': [50, 100, 200],
         'max_depth': [5, 10, 15, None],
@@ -147,71 +97,45 @@ def hyperparameter_tuning():
         'min_samples_leaf': [1, 2, 4]
     }
     
-    # Realizar búsqueda en grid
+    rfc = RandomForestClassifier(random_state=RANDOM_STATE)
     grid_search = GridSearchCV(
-        RandomForestClassifier(random_state=42),
-        param_grid,
+        estimator=rfc,
+        param_grid=param_grid,
         cv=3,
-        scoring='accuracy',
-        n_jobs=-1
+        scoring='f1',
+        n_jobs=-1,
+        verbose=1
     )
     
     grid_search.fit(X_train, y_train)
     
-    # Obtener mejores parámetros
-    best_params = grid_search.best_params_
-    best_score = grid_search.best_score_
+    logger.info(f"Best parameters found: {grid_search.best_params_}")
+    logger.info(f"Best cross-validation F1 score: {grid_search.best_score_:.4f}")
     
-    logger.info(f"Mejores parámetros: {best_params}")
-    logger.info(f"Mejor score CV: {best_score:.4f}")
+    best_model = grid_search.best_estimator_
     
-    # Entrenar y registrar el mejor modelo
-    best_model_results = train_and_log_model(
-        X_train, X_test, y_train, y_test, best_params, "best_model"
+    best_model_results = log_model_to_mlflow(
+        model=best_model,
+        X_test=X_test,
+        y_test=y_test,
+        run_name="best_model_from_gridsearch"
     )
     
-    # Entrenar algunos modelos adicionales para comparación
-    comparison_params = [
-        {"n_estimators": 50, "max_depth": 5, "min_samples_split": 2, "min_samples_leaf": 1},
-        {"n_estimators": 100, "max_depth": 10, "min_samples_split": 5, "min_samples_leaf": 2},
-        {"n_estimators": 200, "max_depth": 15, "min_samples_split": 10, "min_samples_leaf": 4}
-    ]
-    
-    results = [best_model_results]
-    
-    for i, params in enumerate(comparison_params):
-        run_name = f"comparison_model_{i+1}"
-        model_results = train_and_log_model(
-            X_train, X_test, y_train, y_test, params, run_name
-        )
-        results.append(model_results)
-    
-    # Encontrar el mejor modelo basado en F1 score
-    best_model_idx = max(range(len(results)), key=lambda i: results[i]['f1_score'])
-    best_model = results[best_model_idx]
-    
-    logger.info(f"Mejor modelo: {best_model_idx} con F1 score: {best_model['f1_score']:.4f}")
-    
-    return best_model, results
+    return best_model_results
 
 def main():
-    """Función principal"""
     try:
-        # Realizar búsqueda de hiperparámetros
-        best_model, all_results = hyperparameter_tuning()
+        best_model_info = perform_hyperparameter_tuning()
         
-        # Mostrar resumen de resultados
-        logger.info("\n=== RESUMEN DE RESULTADOS ===")
-        for i, result in enumerate(all_results):
-            logger.info(f"Modelo {i+1}: Accuracy={result['accuracy']:.4f}, "
-                       f"Precision={result['precision']:.4f}, "
-                       f"Recall={result['recall']:.4f}, "
-                       f"F1={result['f1_score']:.4f}")
-        
-        logger.info(f"\nMejor modelo encontrado con F1 score: {best_model['f1_score']:.4f}")
+        logger.info("\n=== EXPERIMENT SUMMARY ===")
+        logger.info(f"Best model logged in run ID: {best_model_info['run_id']}")
+        logger.info(f"  Accuracy: {best_model_info['accuracy']:.4f}")
+        logger.info(f"  Precision: {best_model_info['precision']:.4f}")
+        logger.info(f"  Recall: {best_model_info['recall']:.4f}")
+        logger.info(f"  F1 Score: {best_model_info['f1_score']:.4f}")
         
     except Exception as e:
-        logger.error(f"Error en el experimento: {str(e)}")
+        logger.error(f"An error occurred during the experiment: {e}", exc_info=True)
         raise
 
 if __name__ == "__main__":
