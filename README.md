@@ -1,4 +1,8 @@
 # Proyecto Final de MLOps - Pipeline de Predicción de Enfermedades Cardíacas
+### Aprendizaje de Máquina I - CEIA - FIUBA
+
+Este repositorio contiene un pipeline completo de MLOps para la clasificación de enfermedades cardíacas, utilizando Docker, Apache Airflow, MLflow y FastAPI.
+
 
 ## Equipo
 
@@ -10,21 +14,20 @@
 
 -----
 
-
-Este repositorio contiene un pipeline completo de MLOps para la clasificación de enfermedades cardíacas, utilizando Docker, Apache Airflow, MLflow y FastAPI.
-
 ### Tabla de Contenidos
 1.  [Características](#características)
 2.  [Arquitectura del Sistema](#arquitectura-del-sistema)
 3.  [Estructura del Proyecto](#estructura-del-proyecto)
 4.  [Requisitos Previos](#requisitos-previos)
-5.  [Instalación](#instalación)
+5.  [Instalación y Configuración](#instalación-y-configuración)
 6.  [Uso del Sistema](#uso-del-sistema)
-7.  [Descripción del Pipeline de Machine Learning](#descripción-del-pipeline-de-machine-learning)
-8.  [Referencia de la API](#referencia-de-la-api)
-9.  [Solución de Problemas](#solución-de-problemas)
-10. [Contribuciones](#contribuciones)
-11. [Equipo](#equipo)
+7.  [Referencia de la API](#referencia-de-la-api)
+8.  [Personalización](#personalización)
+9.  [Comandos Útiles](#comandos-útiles)
+10. [Solución de Problemas](#solución-de-problemas)
+11. [Contribuciones](#contribuciones)
+12. [Licencia](#licencia)
+13. [Equipo](#equipo)
 
 ---
 
@@ -64,38 +67,14 @@ Este repositorio contiene un pipeline completo de MLOps para la clasificación d
 │ Network │
 └─────────┘
 
-````
+Almacenamiento S3 (MinIO)
 
----
+Buckets automáticamente creados:
+- `data`: Para datasets y datos procesados
+- `mlflow`: Para artefactos de MLflow
 
-## Estructura del Proyecto
 
 ```
-MLOps/
-├── airflow/
-│   ├── dags/                    # DAGs de Airflow
-│   ├── logs/                    # Logs de Airflow
-│   ├── plugins/                 # Plugins de Airflow
-│   ├── config/                  # Configuración de Airflow
-│   └── secrets/                 # Variables y conexiones
-├── data/                        # Datasets y datos
-│   └── heart.csv               # Dataset de enfermedades cardíacas
-├── models/                      # Modelos entrenados guardados localmente
-├── scripts/                     # Lógica del modelo y utilidades
-│   ├── model_utils.py          # Clase principal del modelo
-│   ├── train_model_example.py  # Ejemplo de entrenamiento
-│   └── requirements.txt        # Dependencias de los scripts
-├── dockerfiles/                 # Dockerfiles para cada servicio
-│   ├── airflow/
-│   ├── fastapi/
-│   ├── mlflow/
-│   └── postgres/
-├── docker-compose.yaml          # Configuración de servicios
-├── env.example                  # Variables de entorno de ejemplo
-└── mlflow_hyperparameter_tuning.py  # Script de ejemplo MLflow
-```
-
----
 
 #### Componentes Principales
 | Componente | Descripción | Puerto |
@@ -109,11 +88,37 @@ MLOps/
 
 ---
 
+## Estructura del Proyecto
+
+```
+
+MLOps/
+├── airflow/
+│   ├── dags/                 \# Contiene los DAGs de Airflow
+│   ├── logs/                 \# Almacena los logs generados por Airflow
+│   ├── plugins/              \# Para plugins personalizados de Airflow
+│   └── config/               \# Archivos de configuración de Airflow
+├── data/                     \# Datasets para el proyecto
+│   └── heart.csv             \# Dataset de enfermedades cardíacas
+├── models/                   \# Modelos entrenados (si se guardan localmente)
+├── scripts/                  \# Lógica del modelo y scripts de utilidades
+│   ├── model\_utils.py        \# Clases y funciones para el modelo
+│   └── requirements.txt      \# Dependencias de Python para los scripts
+├── dockerfiles/              \# Dockerfiles para construir las imágenes
+│   ├── airflow/
+│   └── fastapi/
+├── docker-compose.yaml       \# Define y configura todos los servicios
+├── env.example               \# Plantilla para las variables de entorno
+└── mlflow\_hyperparameter\_tuning.py \# Script de ejemplo para MLflow
+
+````
+
+---
+
 ## Requisitos Previos
 
-* **Docker**: v24.0 o superior.
-* **Docker Compose**: v2.0 o superior (incluido en Docker Desktop).
-* **Recursos Mínimos**: 4GB RAM (8GB recomendados), 2 CPU cores (4 recomendados).
+1. **Docker**: Instala Docker Desktop o Docker Engine
+2. **Docker Compose**: Viene incluido con Docker Desktop
 
 Para verificar su instalación, ejecute:
 ```bash
@@ -123,7 +128,7 @@ docker-compose --version
 
 -----
 
-## Instalación
+## Instalación y Configuración
 
 1.  **Clonar el repositorio**
 
@@ -132,7 +137,7 @@ docker-compose --version
     cd MLOps
     ```
 
-2.  **Configurar variables de entorno**
+2.  **Crear el archivo de variables de entorno**
 
     ```bash
     cp env.example .env
@@ -147,16 +152,17 @@ docker-compose --version
 3.  **Levantar todos los servicios**
 
     ```bash
-    docker-compose --profile all up -d
+    docker compose --profile all up
     ```
 
+    
 4.  **Verificar el estado de los contenedores**
 
     ```bash
-    docker-compose ps
+    docker ps -a
     ```
 
-    Todos los servicios deberían aparecer con el estado `running` o `healthy`.
+    
 
 -----
 
@@ -164,7 +170,7 @@ docker-compose --version
 
 #### Acceso a los Servicios
 
-Una vez iniciados los contenedores, las interfaces de los servicios están disponibles en las siguientes URLs:
+Una vez iniciados los contenedores, las interfaces están disponibles en las siguientes URLs:
 
 | Servicio | URL | Usuario | Contraseña |
 | :--- | :--- | :--- | :--- |
@@ -182,49 +188,30 @@ Una vez iniciados los contenedores, las interfaces de los servicios están dispo
 4.  Activar el DAG utilizando el interruptor (toggle).
 5.  Ejecutarlo manualmente haciendo clic en el botón de "Play".
 
------
+#### Ejecutar Experimentos de Hyperparameter Tuning
 
-## Descripción del Pipeline de Machine Learning
+Puedes ejecutar un script de ejemplo para buscar hiperparámetros y registrar los resultados en MLflow.
 
-El DAG `mlops_pipeline` ejecuta las siguientes etapas de forma orquestada:
+1.  **Configurar variables de entorno en la terminal**:
 
-```
-Setup MLflow
-    ↓
-Extract Data
-    ↓
-Preprocess Data
-    ↓
-┌─────────────┬─────────────┬─────────────┐
-│   Train     │   Train     │   Train     │
-│ Random      │  Logistic   │     SVM     │
-│  Forest     │ Regression  │             │
-└─────┬───────┴──────┬──────┴──────┬──────┘
-      ↓              ↓             ↓
-  Evaluate RF   Evaluate LR   Evaluate SVM
-      │              │             │
-      └──────────┬───┴─────────────┘
-                 ↓
-         Select Best Model
-                 ↓
-        Cleanup Old Models
-```
+    ```bash
+    export MLFLOW_TRACKING_URI=http://localhost:5000
+    export AWS_ACCESS_KEY_ID=minio
+    export AWS_SECRET_ACCESS_KEY=minio123
+    export MLFLOW_S3_ENDPOINT_URL=http://localhost:9000
+    ```
 
-  * **Setup MLflow**: Configura el servidor de tracking y el nombre del experimento.
-  * **Extract Data**: Carga el dataset de enfermedades cardíacas desde un archivo fuente.
-  * **Preprocess Data**: Realiza la limpieza, escalado de características y división en conjuntos de entrenamiento y prueba.
-  * **Train Models**: Entrena tres modelos distintos en paralelo.
-  * **Evaluate Models**: Calcula métricas de rendimiento (accuracy, precision, recall, F1-score) para cada modelo.
-  * **Select Best Model**: Compara los modelos según sus métricas y registra el mejor en el Model Registry de MLflow.
-  * **Cleanup**: Mantiene solo las últimas 5 versiones del modelo registrado para evitar la acumulación de artefactos.
+2.  **Ejecutar el script**:
+
+    ```bash
+    python mlflow_hyperparameter_tuning.py
+    ```
 
 -----
 
 ## Referencia de la API
 
-#### Realizar una Predicción
-
-Endpoint para obtener una predicción a partir de un conjunto de características.
+#### Realizar una Predicción (Ejemplo con `curl`)
 
   * **Request (`POST /predict`)**
 
@@ -246,6 +233,33 @@ Endpoint para obtener una predicción a partir de un conjunto de característica
     }
     ```
 
+#### Realizar una Predicción (Ejemplo con `Python`)
+
+```python
+import requests
+import json
+
+# Datos de ejemplo (13 características)
+sample_data = {
+    "features": [63, 1, 3, 145, 233, 1, 0, 150, 0, 2.3, 0, 0, 1]
+}
+
+# Hacer la petición a la API
+response = requests.post(
+    "http://localhost:8800/predict",
+    json=sample_data
+)
+
+if response.status_code == 200:
+    result = response.json()
+    print(f"Predicción: {result['prediction']}")
+    print(f"Probabilidad: {result['probability']:.2%}")
+    print(f"Versión del modelo: {result['model_version']}")
+else:
+    print(f"Error: {response.status_code}")
+    print(response.json())
+```
+
 #### Otros Endpoints Disponibles
 
   * `GET /`: Devuelve información básica de la API.
@@ -257,32 +271,128 @@ La documentación interactiva completa de la API está disponible en `http://loc
 
 -----
 
+## Personalización
+
+### Agregar Nuevos DAGs
+
+1.  Crea tu archivo Python en la carpeta `airflow/dags/`.
+2.  El DAG aparecerá automáticamente en la UI de Airflow después de unos momentos.
+
+### Modificar la API
+
+1.  Edita el archivo `dockerfiles/fastapi/app.py` con tu nueva lógica.
+2.  Reconstruye la imagen del contenedor de FastAPI: `docker-compose build fastapi`.
+3.  Reinicia el servicio para aplicar los cambios: `docker-compose restart fastapi`.
+
+### Configurar Conexiones de Airflow
+
+Para agregar conexiones de forma declarativa, edita el archivo `airflow/config/connections.yaml`.
+
+-----
+
+## Comandos Útiles
+
+### Gestión de Servicios
+
+```bash
+# Levantar todos los servicios en segundo plano
+docker-compose --profile all up -d
+
+# Detener todos los servicios
+docker-compose --profile all down
+
+# Ver el estado de los contenedores
+docker-compose ps
+
+# Ver los logs de un servicio específico en tiempo real
+docker-compose logs -f [nombre-del-servicio]
+
+# Detener y eliminar volúmenes (¡CUIDADO! Borra todos los datos)
+docker-compose --profile all down --volumes
+```
+
+### Debugging con Airflow CLI
+
+```bash
+# Listar todos los DAGs disponibles
+docker-compose run airflow-cli dags list
+
+# Ver la información detallada de un DAG
+docker-compose run airflow-cli dags show mlops_pipeline
+
+# Pausar un DAG
+docker-compose run airflow-cli dags pause mlops_pipeline
+
+# Reanudar un DAG
+docker-compose run airflow-cli dags unpause mlops_pipeline
+```
+
+-----
+
 ## Solución de Problemas
 
-  * **Contenedores no inician**: Verifique los logs de un servicio específico con `docker-compose logs [nombre-del-servicio]`.
-  * **Errores de permisos en Linux/macOS**: Asegúrese de que la variable `AIRFLOW_UID` en el archivo `.env` coincida con su ID de usuario (`id -u`). Adicionalmente, puede reasignar permisos con `sudo chown -R $(id -u):$(id -g) airflow/`.
-  * **Puertos en uso**: Si un puerto ya está ocupado, edite el archivo `.env` y asigne un puerto diferente a la variable correspondiente (ej. `AIRFLOW_PORT=8081`).
-  * **Limpieza total del entorno**: Para eliminar todos los contenedores, redes y volúmenes (esto borrará todos los datos), ejecute:
-    ```bash
-    docker-compose --profile all down --volumes
-    ```
+  * **Servicios no inician o fallan al levantar**:
+
+    1.  **Verifica que Docker esté activo** y que los contenedores se hayan creado. El comando `ps` te mostrará el estado de cada uno.
+        ```bash
+        docker-compose ps
+        ```
+    2.  **Revisa los logs** del servicio que está fallando para ver el mensaje de error específico.
+        ```bash
+        docker-compose logs [nombre-del-servicio]
+        ```
+    3.  **Confirma que los puertos** definidos en el archivo `.env` (ej. `8080`, `5000`, etc.) no estén siendo utilizados por otro programa en tu sistema.
+
+  * **Errores de permisos en Linux/macOS**:
+
+      * Asegúrate de que la variable `AIRFLOW_UID` en el archivo `.env` coincida con tu ID de usuario (`id -u`). Adicionalmente, puedes reasignar permisos a la carpeta de Airflow:
+        ```bash
+        sudo chown -R $(id -u):$(id -g) airflow/
+        ```
+
+  * **MLflow no se conecta a MinIO**:
+
+    1.  Verifica que el contenedor de `minio` esté en estado `running` con `docker-compose ps`.
+    2.  Revisa que las variables de entorno de S3 en tu archivo `.env` sean correctas.
+    3.  Verifica la conectividad de red con el contenedor: `curl http://localhost:9000`.
+
+  * **DAGs no aparecen en la UI de Airflow**:
+
+    1.  **Verifica si hay errores de sintaxis** en los logs del contenedor `airflow-scheduler`.
+    2.  **Asegúrate de que el archivo del DAG** esté dentro de la carpeta `airflow/dags/`.
+    3.  **Lista los DAGs desde el CLI** para confirmar si Airflow los ha detectado:
+        ```bash
+        docker-compose run airflow-cli dags list
+        ```
+    4.  **Para eliminar los DAGs de ejemplo** que vienen con Airflow, puedes usar el CLI:
+        ```bash
+        docker-compose run airflow-cli dags delete [dag_id_ejemplo]
+        ```
 
 -----
 
 ## Contribuciones
 
-Las contribuciones a este proyecto son bienvenidas. Para ello, por favor siga estos pasos:
+Las contribuciones a este proyecto son bienvenidas.
 
-1.  Realice un Fork del repositorio.
-2.  Cree una nueva rama para su funcionalidad (`git checkout -b feature/nueva-funcionalidad`).
-3.  Realice un Commit con sus cambios (`git commit -m 'Agrega nueva funcionalidad'`).
-4.  Haga un Push a la rama (`git push origin feature/nueva-funcionalidad`).
-5.  Abra un Pull Request.
+1.  Realiza un Fork del repositorio.
+2.  Crea una nueva rama para tu funcionalidad (`git checkout -b feature/nueva-funcionalidad`).
+3.  Realiza un Commit con sus cambios (`git commit -m 'Agrega nueva funcionalidad'`).
+4.  Haz un Push a la rama (`git push origin feature/nueva-funcionalidad`).
+5.  Abre un Pull Request.
+
+#### Ideas para mejorar:
+
+  - Agregar más tipos de modelos al pipeline.
+  - Implementar monitoreo de servicios con Grafana y Prometheus.
+  - Agregar tests automatizados para la API y los componentes del pipeline.
+  - Implementar un flujo de CI/CD con GitHub Actions.
+  - Agregar más visualizaciones y reportes en MLflow.
 
 -----
-
 
 ## Licencia
 
 Este proyecto se distribuye bajo la Licencia Apache 2.0. Consulte el archivo `LICENSE` para más detalles.
+
 
