@@ -1,0 +1,20 @@
+random_forest:
+  n_estimators: 100
+  max_depth: 10
+  min_samples_split: 5
+  min_samples_leaf: 2
+  random_state: 42
+
+logistic_regression:
+  penalty: "l2"
+  C: 1.0
+  solver: "lbfgs"
+  max_iter: 500
+  random_state: 42
+
+svm:
+  kernel: 'rbf'
+  C: 10
+  gamma: 0.1
+  probability: true
+  random_state: 42
