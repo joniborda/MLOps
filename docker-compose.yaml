@@ -48,6 +48,7 @@ x-airflow-common: &airflow-common
     AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_ACCESS_KEY:-minio123}
     AWS_ENDPOINT_URL_S3: http://s3:9000
     MLFLOW_S3_ENDPOINT_URL: http://s3:9000
+    AIRFLOW__WEBSERVER__SECRET_KEY: CO21_MLOps # Llevar a .env
   volumes:
     - ${AIRFLOW_PROJ_DIR:-./airflow}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-./airflow}/logs:/opt/airflow/logs
@@ -57,6 +58,7 @@ x-airflow-common: &airflow-common
     - ./scripts:/opt/airflow/scripts
     - ./data:/opt/airflow/data
     - ./models:/opt/airflow/models
+    - ./airflow/config/model_params.yaml:/opt/airflow/config/model_params.yaml:ro
   networks:
     - frontend
     - backend
@@ -78,7 +80,7 @@ services:
       - mlflow
       - all
     ports:
-      - "${PG_PORT:-5432}:5432"
+      - "${PG_PORT:-55432}:5432"
     networks:
       - backend
     environment:
@@ -252,6 +254,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - backend
 
   airflow-dag-processor:
     <<: *airflow-common
