@@ -1,282 +1,256 @@
-# MLOps - Proyecto Final
-### Aprendizaje de Máquina I - CEIA - FIUBA
+# Proyecto Final de MLOps - Pipeline de Predicción de Enfermedades Cardíacas
 
-Este proyecto implementa un ambiente productivo completo de MLOps utilizando Docker y Docker Compose. Incluye todos los servicios necesarios para el ciclo de vida completo de machine learning, desde el entrenamiento hasta el despliegue de modelos.
+## Equipo
 
-## Integrantes
+  * Sebastian Biagiola
+  * Erlin Rey
+  * Santiago Casado
+  * Daniel Bazán
+  * Jonathan Matias Borda
 
-1. Sebastian Biagiola
-2. Erlin Rey
-3. Santiago Casado
-5. Daniel Bazán
-6. Jonathan Matias Borda
+-----
 
-## Servicios Incluidos
 
-- **Apache Airflow**: Orquestación de workflows y pipelines de ML
-- **MLflow**: Gestión de experimentos, modelos y artefactos
-- **FastAPI**: API REST para servir modelos entrenados
-- **MinIO**: Almacenamiento de objetos (simulando S3)
-- **PostgreSQL**: Base de datos para Airflow y MLflow
-- **Valkey**: Base de datos key-value para Airflow
+Este repositorio contiene un pipeline completo de MLOps para la clasificación de enfermedades cardíacas, utilizando Docker, Apache Airflow, MLflow y FastAPI.
 
-## Estructura del Proyecto
+### Tabla de Contenidos
+1.  [Características](#características)
+2.  [Arquitectura del Sistema](#arquitectura-del-sistema)
+3.  [Requisitos Previos](#requisitos-previos)
+4.  [Instalación](#instalación)
+5.  [Uso del Sistema](#uso-del-sistema)
+6.  [Descripción del Pipeline de Machine Learning](#descripción-del-pipeline-de-machine-learning)
+7.  [Referencia de la API](#referencia-de-la-api)
+8.  [Solución de Problemas](#solución-de-problemas)
+9.  [Contribuciones](#contribuciones)
+10. [Equipo](#equipo)
+
+---
+
+## Características
+
+* **Pipeline Automatizado**: Orquestación de la extracción, preprocesamiento, entrenamiento y evaluación de modelos.
+* **Comparación de Modelos**: Entrenamiento y evaluación en paralelo de Random Forest, Logistic Regression y SVM.
+* **Seguimiento de Experimentos**: Gestión completa del ciclo de vida de los modelos con MLflow.
+* **API REST para Inferencia**: Servicio de predicciones en tiempo real con FastAPI.
+* **Orquestación de Workflows**: Flujos de trabajo gestionados con Apache Airflow.
+* **Almacenamiento de Objetos**: MinIO como backend compatible con S3 para artefactos y datasets.
+* **Entorno Containerizado**: Todo el stack de servicios se ejecuta en contenedores Docker.
+
+---
+
+## Arquitectura del Sistema
 
 ```
-MLOps/
-├── airflow/
-│   ├── dags/                    # DAGs de Airflow
-│   ├── logs/                    # Logs de Airflow
-│   ├── plugins/                 # Plugins de Airflow
-│   ├── config/                  # Configuración de Airflow
-│   └── secrets/                 # Variables y conexiones
-├── data/                        # Datasets y datos
-│   └── heart.csv               # Dataset de enfermedades cardíacas
-├── models/                      # Modelos entrenados guardados localmente
-├── scripts/                     # Lógica del modelo y utilidades
-│   ├── model_utils.py          # Clase principal del modelo
-│   ├── train_model_example.py  # Ejemplo de entrenamiento
-│   └── requirements.txt        # Dependencias de los scripts
-├── dockerfiles/                 # Dockerfiles para cada servicio
-│   ├── airflow/
-│   ├── fastapi/
-│   ├── mlflow/
-│   └── postgres/
-├── docker-compose.yaml          # Configuración de servicios
-├── env.example                  # Variables de entorno de ejemplo
-└── mlflow_hyperparameter_tuning.py  # Script de ejemplo MLflow
-```
 
-## Instalación y Configuración
+┌─────────────────┐
+│   Airflow UI    │──────┐
+│   (Port 8080)   │      │
+└─────────────────┘      │
+│
+┌─────────────────┐      │      ┌─────────────────┐
+│   MLflow UI     │──────┼──────│   PostgreSQL    │
+│   (Port 5432)   │      │      │ (DB Backend)    │
+└─────────────────┘      │      └─────────────────┘
+│
+┌─────────────────┐      │      ┌─────────────────┐
+│   FastAPI       │──────┼──────│   MinIO (S3)    │
+│   (Port 8800)   │      │      │ (Port 9000)     │
+└─────────────────┘      │      └─────────────────┘
+│
+┌────▼────┐
+│ Docker  │
+│ Network │
+└─────────┘
 
-### Prerrequisitos
+````
 
-1. **Docker**: Instala Docker Desktop o Docker Engine
-2. **Docker Compose**: Viene incluido con Docker Desktop
+#### Componentes Principales
+| Componente | Descripción | Puerto |
+| :--- | :--- | :--- |
+| **Apache Airflow** | Orquestación de workflows y pipelines de ML | `8080` |
+| **MLflow** | Gestión de experimentos, modelos y artefactos | `5000` |
+| **FastAPI** | API REST para servir los modelos entrenados | `8800` |
+| **MinIO** | Almacenamiento de objetos (S3-compatible) | `9000` (API), `9001` (UI) |
+| **PostgreSQL**| Base de datos para los metadatos de Airflow y MLflow | `5432` |
+| **Valkey** | Base de datos key-value para el broker de Celery en Airflow | `6379` |
 
-### Pasos de Instalación
+---
 
-1. **Clona o descarga este repositorio**
+## Requisitos Previos
 
-2. **Crea el archivo de variables de entorno**:
-   ```bash
-   cp env.example .env
-   ```
+* **Docker**: v24.0 o superior.
+* **Docker Compose**: v2.0 o superior (incluido en Docker Desktop).
+* **Recursos Mínimos**: 4GB RAM (8GB recomendados), 2 CPU cores (4 recomendados).
 
-3. **Configura las variables de entorno** (opcional):
-   - Edita el archivo `.env` si necesitas cambiar puertos o credenciales
-   - En Linux/MacOS, asegúrate de configurar `AIRFLOW_UID` con tu UID de usuario
+Para verificar su instalación, ejecute:
+```bash
+docker --version
+docker-compose --version
+````
 
-4. **Levanta todos los servicios**:
-   ```bash
-   docker compose --profile all up
-   ```
+-----
 
-5. **Verifica que todos los servicios estén funcionando**:
-   ```bash
-   docker ps -a
-   ```
+## Instalación
 
-## Acceso a los Servicios
+1.  **Clonar el repositorio**
 
-Una vez que todos los servicios estén funcionando, podrás acceder a:
+    ```bash
+    git clone [https://github.com/joniborda/MLOps.git](https://github.com/joniborda/MLOps.git)
+    cd MLOps
+    ```
 
-- **Apache Airflow**: http://localhost:8080
-  - Usuario: `airflow`
-  - Contraseña: `airflow`
-- **MLflow**: http://localhost:5000
-- **MinIO Console**: http://localhost:9001
-  - Usuario: `minio`
-  - Contraseña: `minio123`
-- **FastAPI**: http://localhost:8800
-- **Documentación de la API**: http://localhost:8800/docs
+2.  **Configurar variables de entorno**
 
-## Características Implementadas
+    ```bash
+    cp env.example .env
+    ```
 
-### 1. Pipeline de Airflow (`mlops_pipeline.py`)
+    En sistemas Linux o macOS, es necesario configurar el UID del usuario actual para evitar problemas de permisos con Airflow:
 
-Un DAG completo que incluye:
-- **Extracción de datos**: Genera datos sintéticos de enfermedades cardíacas
-- **Preprocesamiento**: Limpieza y preparación de datos
-- **Entrenamiento**: Modelo Random Forest con MLflow
-- **Evaluación**: Métricas de rendimiento
-- **Registro**: Modelo guardado en MLflow
+    ```bash
+    echo "AIRFLOW_UID=$(id -u)" >> .env
+    ```
 
-### 2. API FastAPI
+3.  **Levantar todos los servicios**
 
-Servicio REST que incluye:
-- **Endpoint de predicción**: `/predict` para hacer predicciones
-- **Health check**: `/health` para monitoreo
-- **Información del modelo**: `/model/info` para detalles del modelo
-- **Recarga de modelo**: `/model/reload` para actualizar el modelo
+    ```bash
+    docker-compose --profile all up -d
+    ```
 
-### 3. Experimentos MLflow
+4.  **Verificar el estado de los contenedores**
 
-Script de ejemplo (`mlflow_hyperparameter_tuning.py`) que demuestra:
-- **Búsqueda de hiperparámetros**: Grid search con Random Forest
-- **Registro de experimentos**: Múltiples runs con diferentes parámetros
-- **Comparación de modelos**: Métricas detalladas para cada configuración
-- **Registro de artefactos**: Modelos y datos de ejemplo
+    ```bash
+    docker-compose ps
+    ```
 
-### 4. Almacenamiento S3 (MinIO)
+    Todos los servicios deberían aparecer con el estado `running` o `healthy`.
 
-Buckets automáticamente creados:
-- `data`: Para datasets y datos procesados
-- `mlflow`: Para artefactos de MLflow
+-----
 
 ## Uso del Sistema
 
-### 1. Ejecutar el Pipeline de Airflow
+#### Acceso a los Servicios
 
-1. Accede a http://localhost:8080
-2. Inicia sesión con `airflow`/`airflow`
-3. Encuentra el DAG `mlops_pipeline`
-4. Actívalo y ejecútalo manualmente o espera a la programación
+Una vez iniciados los contenedores, las interfaces de los servicios están disponibles en las siguientes URLs:
 
-### 2. Hacer Predicciones con la API
+| Servicio | URL | Usuario | Contraseña |
+| :--- | :--- | :--- | :--- |
+| **Airflow** | `http://localhost:8080` | `airflow` | `airflow` |
+| **MLflow** | `http://localhost:5000` | - | - |
+| **MinIO Console** | `http://localhost:9001` | `minio` | `minio123` |
+| **FastAPI** | `http://localhost:8800` | - | - |
+| **API Docs** | `http://localhost:8800/docs` | - | - |
 
-```python
-import requests
-import json
+#### Ejecutar el Pipeline de Machine Learning
 
-# Datos de ejemplo (13 características)
-sample_data = {
-    "features": [63, 1, 3, 145, 233, 1, 0, 150, 0, 2.3, 0, 0, 1]
-}
+1.  Acceder a la interfaz de **Airflow**: `http://localhost:8080`.
+2.  Iniciar sesión con las credenciales por defecto.
+3.  Localizar el DAG llamado `mlops_pipeline`.
+4.  Activar el DAG utilizando el interruptor (toggle).
+5.  Ejecutarlo manualmente haciendo clic en el botón de "Play".
 
-# Hacer predicción
-response = requests.post(
-    "http://localhost:8800/predict",
-    json=sample_data
-)
+-----
 
-result = response.json()
-print(f"Predicción: {result['prediction']}")
-print(f"Probabilidad: {result['probability']:.2f}")
+## Descripción del Pipeline de Machine Learning
+
+El DAG `mlops_pipeline` ejecuta las siguientes etapas de forma orquestada:
+
+```
+Setup MLflow
+    ↓
+Extract Data
+    ↓
+Preprocess Data
+    ↓
+┌─────────────┬─────────────┬─────────────┐
+│   Train     │   Train     │   Train     │
+│ Random      │  Logistic   │     SVM     │
+│  Forest     │ Regression  │             │
+└─────┬───────┴──────┬──────┴──────┬──────┘
+      ↓              ↓             ↓
+  Evaluate RF   Evaluate LR   Evaluate SVM
+      │              │             │
+      └──────────┬───┴─────────────┘
+                 ↓
+         Select Best Model
+                 ↓
+        Cleanup Old Models
 ```
 
-### 3. Ejecutar Experimentos MLflow
+  * **Setup MLflow**: Configura el servidor de tracking y el nombre del experimento.
+  * **Extract Data**: Carga el dataset de enfermedades cardíacas desde un archivo fuente.
+  * **Preprocess Data**: Realiza la limpieza, escalado de características y división en conjuntos de entrenamiento y prueba.
+  * **Train Models**: Entrena tres modelos distintos en paralelo.
+  * **Evaluate Models**: Calcula métricas de rendimiento (accuracy, precision, recall, F1-score) para cada modelo.
+  * **Select Best Model**: Compara los modelos según sus métricas y registra el mejor en el Model Registry de MLflow.
+  * **Cleanup**: Mantiene solo las últimas 5 versiones del modelo registrado para evitar la acumulación de artefactos.
 
-```bash
-# Configurar variables de entorno
-export MLFLOW_TRACKING_URI=http://localhost:5000
-export AWS_ACCESS_KEY_ID=minio
-export AWS_SECRET_ACCESS_KEY=minio123
-export AWS_ENDPOINT_URL_S3=http://localhost:9000
+-----
 
-# Ejecutar experimento
-python mlflow_hyperparameter_tuning.py
-```
+## Referencia de la API
 
-## Comandos Útiles
+#### Realizar una Predicción
 
-### Gestión de Servicios
+Endpoint para obtener una predicción a partir de un conjunto de características.
 
-```bash
-# Levantar todos los servicios
-docker compose --profile all up
+  * **Request (`POST /predict`)**
 
-# Levantar en segundo plano
-docker compose --profile all up -d
+    ```bash
+    curl -X POST "http://localhost:8800/predict" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "features": [63, 1, 3, 145, 233, 1, 0, 150, 0, 2.3, 0, 0, 1]
+      }'
+    ```
 
-# Ver logs de un servicio específico
-docker compose logs fastapi
+  * **Response**
 
-# Detener todos los servicios
-docker compose --profile all down
+    ```json
+    {
+      "prediction": 1,
+      "probability": 0.85,
+      "model_version": "3"
+    }
+    ```
 
-# Detener y eliminar volúmenes (¡CUIDADO! Borra datos)
-docker compose down --rmi all --volumes
-```
+#### Otros Endpoints Disponibles
 
-### Debugging con Airflow CLI
+  * `GET /`: Devuelve información básica de la API.
+  * `GET /health`: Realiza un chequeo de salud del servicio.
+  * `GET /model/info`: Devuelve metadatos del modelo actualmente cargado en memoria.
+  * `POST /model/reload`: Fuerza la recarga del último modelo registrado en MLflow.
 
-```bash
-# Levantar con perfil de debug
-docker compose --profile all --profile debug up
+La documentación interactiva completa de la API está disponible en `http://localhost:8800/docs`.
 
-# Usar CLI de Airflow
-docker-compose run airflow-cli config list
-docker-compose run airflow-cli dags list
-
-# Eliminar un DAG específico
-docker-compose run airflow-cli dags delete [dag_id]
-
-# Ver información de un DAG
-docker-compose run airflow-cli dags show [dag_id]
-
-# Pausar/despausar un DAG
-docker-compose run airflow-cli dags pause [dag_id]
-docker-compose run airflow-cli dags unpause [dag_id]
-```
-
-## Personalización
-
-### Agregar Nuevos DAGs
-
-1. Crea tu archivo Python en `airflow/dags/`
-2. Sigue la estructura del DAG de ejemplo
-3. El DAG aparecerá automáticamente en la UI de Airflow
-
-### Modificar la API
-
-1. Edita `dockerfiles/fastapi/app.py`
-2. Reconstruye el contenedor: `docker compose build fastapi`
-3. Reinicia el servicio: `docker compose restart fastapi`
-
-### Configurar Conexiones de Airflow
-
-Edita `airflow/secrets/connections.yaml` para agregar nuevas conexiones.
+-----
 
 ## Solución de Problemas
 
-### Servicios no inician
+  * **Contenedores no inician**: Verifique los logs de un servicio específico con `docker-compose logs [nombre-del-servicio]`.
+  * **Errores de permisos en Linux/macOS**: Asegúrese de que la variable `AIRFLOW_UID` en el archivo `.env` coincida con su ID de usuario (`id -u`). Adicionalmente, puede reasignar permisos con `sudo chown -R $(id -u):$(id -g) airflow/`.
+  * **Puertos en uso**: Si un puerto ya está ocupado, edite el archivo `.env` y asigne un puerto diferente a la variable correspondiente (ej. `AIRFLOW_PORT=8081`).
+  * **Limpieza total del entorno**: Para eliminar todos los contenedores, redes y volúmenes (esto borrará todos los datos), ejecute:
+    ```bash
+    docker-compose --profile all down --volumes
+    ```
 
-1. Verifica que Docker esté funcionando: `docker ps`
-2. Revisa los logs: `docker compose logs [servicio]`
-3. Verifica que los puertos no estén ocupados
-
-### Problemas de permisos (Linux/MacOS)
-
-1. Configura `AIRFLOW_UID` en `.env` con tu UID: `id -u`
-2. Ejecuta: `sudo chown -R $AIRFLOW_UID:$AIRFLOW_GID airflow/`
-
-### MLflow no se conecta
-
-1. Verifica que MinIO esté funcionando
-2. Revisa las variables de entorno de S3
-3. Verifica la conectividad: `curl http://localhost:9000`
-
-### DAGs no aparecen o hay DAGs de ejemplo
-
-1. **Si hay DAGs de ejemplo:** Elimina los DAGs específicos:
-   ```bash
-   docker-compose run airflow-cli dags delete example_dag_id
-   ```
-
-2. **Si tu DAG no aparece:** Verifica que esté en `airflow/dags/` y sin errores de sintaxis
-
-3. **Para limpiar completamente:** Detén y elimina volúmenes:
-   ```bash
-   docker compose --profile all down --volumes
-   docker compose --profile all up
-   ```
-
-4. **Verificar DAGs disponibles:**
-   ```bash
-   docker-compose run airflow-cli dags list
-   ```
+-----
 
 ## Contribuciones
 
-Este proyecto está abierto a contribuciones. Algunas ideas para mejorar:
+Las contribuciones a este proyecto son bienvenidas. Para ello, por favor siga estos pasos:
 
-- Agregar más tipos de modelos
-- Implementar monitoreo con Grafana
-- Agregar tests automatizados
-- Implementar CI/CD con GitHub Actions
-- Agregar más visualizaciones en MLflow
+1.  Realice un Fork del repositorio.
+2.  Cree una nueva rama para su funcionalidad (`git checkout -b feature/nueva-funcionalidad`).
+3.  Realice un Commit con sus cambios (`git commit -m 'Agrega nueva funcionalidad'`).
+4.  Haga un Push a la rama (`git push origin feature/nueva-funcionalidad`).
+5.  Abra un Pull Request.
+
+-----
+
 
 ## Licencia
 
-Este proyecto está bajo la Licencia Apache 2.0. Ver el archivo LICENSE para más detalles.
+Este proyecto se distribuye bajo la Licencia Apache 2.0. Consulte el archivo `LICENSE` para más detalles.
+
