@@ -18,16 +18,17 @@ Este repositorio contiene un pipeline completo de MLOps para la clasificación d
 1.  [Características](#características)
 2.  [Arquitectura del Sistema](#arquitectura-del-sistema)
 3.  [Estructura del Proyecto](#estructura-del-proyecto)
-4.  [Requisitos Previos](#requisitos-previos)
-5.  [Instalación y Configuración](#instalación-y-configuración)
-6.  [Uso del Sistema](#uso-del-sistema)
-7.  [Referencia de la API](#referencia-de-la-api)
-8.  [Personalización](#personalización)
-9.  [Comandos Útiles](#comandos-útiles)
-10. [Solución de Problemas](#solución-de-problemas)
-11. [Contribuciones](#contribuciones)
-12. [Licencia](#licencia)
-13. [Equipo](#equipo)
+4.  [Modelo de Predicción](#modelo-de-predicción)
+5.  [Requisitos Previos](#requisitos-previos)
+6.  [Instalación y Configuración](#instalación-y-configuración)
+7.  [Uso del Sistema](#uso-del-sistema)
+8.  [Referencia de la API](#referencia-de-la-api)
+9.  [Personalización](#personalización)
+10.  [Comandos Útiles](#comandos-útiles)
+11. [Solución de Problemas](#solución-de-problemas)
+12. [Contribuciones](#contribuciones)
+13. [Licencia](#licencia)
+14. [Equipo](#equipo)
 
 ---
 
@@ -112,6 +113,24 @@ MLOps/
 └── mlflow\_hyperparameter\_tuning.py \# Script de ejemplo para MLflow
 
 ````
+
+---
+
+## Modelo de Predicción
+
+Este proyecto aborda un problema de clasificación binaria para predecir la presencia de enfermedad cardíaca.
+
+- **Qué predice**: probabilidad/presencia de enfermedad cardíaca (0 = no, 1 = sí).
+- **Entrada del modelo**: 13 características clínicas numéricas del dataset de corazón (`data/heart.csv`). En el endpoint `/predict` se envían en una lista llamada `features`, en el mismo orden usado durante el entrenamiento. Referencia habitual del conjunto UCI Heart Disease:
+  - `age`, `sex`, `cp`, `trestbps`, `chol`, `fbs`, `restecg`, `thalach`, `exang`, `oldpeak`, `slope`, `ca`, `thal`.
+- **Estrategia y algoritmos**: se entrenan y comparan múltiples modelos definidos en `scripts/models/`:
+  - Regresión Logística (`HeartDiseaseLogisticRegressionModel`)
+  - Random Forest (`HeartDiseaseRandomForestModel`)
+  - SVM (`HeartDiseaseSVMModel`)
+- **Selección y tracking**: el desempeño se registra con MLflow; el mejor modelo se registra en el Model Registry con el nombre `heart_disease_classifier` y es el que sirve FastAPI por defecto.
+- **Tuning opcional**: puedes ejecutar `mlflow_hyperparameter_tuning.py` para buscar hiperparámetros y registrar corridas en MLflow.
+
+> Nota: el servicio de inferencia espera los valores ya numéricos y en el mismo orden que el entrenamiento. Ver ejemplo en la sección [Referencia de la API](#referencia-de-la-api).
 
 ---
 

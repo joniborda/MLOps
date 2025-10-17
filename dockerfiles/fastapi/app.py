@@ -38,6 +38,13 @@ model_version = None
 class PredictionRequest(BaseModel):
     """Request model for predictions"""
     features: List[float]
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "features": [63, 1, 3, 145, 233, 1, 0, 150, 0, 2.3, 0, 0, 1]
+            }
+        }
+    }
     
 class PredictionResponse(BaseModel):
     """Response model for predictions"""
