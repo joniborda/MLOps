@@ -17,6 +17,7 @@ import os
 import sys
 import logging
 from typing import Any, Dict
+import copy
 
 # Agregar el directorio scripts al path
 sys.path.append('/opt/airflow/scripts')
@@ -45,6 +46,8 @@ dag = DAG(
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+PARAM_KEYS_EXCLUDED_FROM_SCALING = {'random_state'}
 
 
 def create_s3_client():
@@ -449,6 +452,115 @@ def select_best_model(**context):
 
     return best_model
 
+
+def _scale_params_by_factor(params: Dict[str, Any], factor: float) -> Dict[str, Any]:
+    scaled_params: Dict[str, Any] = {}
+    for key, value in params.items():
+        if key in PARAM_KEYS_EXCLUDED_FROM_SCALING or isinstance(value, bool):
+            scaled_params[key] = value
+            continue
+
+        if isinstance(value, int):
+            scaled_value = max(1, int(round(value * factor)))
+            scaled_params[key] = scaled_value
+        elif isinstance(value, float):
+            scaled_value = max(1e-6, float(value * factor))
+            scaled_params[key] = scaled_value
+        else:
+            scaled_params[key] = value
+
+    return scaled_params
+
+
+def _extract_accuracy(result: Dict[str, Any]) -> float:
+    if not result:
+        return float("-inf")
+
+    metrics = result.get("metrics") or {}
+    accuracy = metrics.get("accuracy")
+    if accuracy is None:
+        accuracy = result.get("accuracy")
+    return accuracy if accuracy is not None else float("-inf")
+
+
+def tune_best_model(**context):
+    task_instance = context['ti']
+    best_model_info = task_instance.xcom_pull(task_ids='select_best_model')
+
+    if not best_model_info:
+        raise ValueError("No se encontró información del mejor modelo para ajustar")
+
+    model_type = best_model_info.get('model_type')
+    if not model_type:
+        raise ValueError("El mejor modelo no especifica 'model_type'")
+
+    base_params = copy.deepcopy(best_model_info.get('model_params', {}))
+    if not base_params:
+        logger.warning("El mejor modelo no tiene parámetros configurados. Se utilizarán valores originales.")
+
+    logger.info("Iniciando ajuste para el modelo %s con parámetros base: %s", model_type, base_params)
+
+    tuning_candidates = [
+        {
+            "label": "original",
+            "params": base_params,
+            "result": best_model_info
+        }
+    ]
+
+    adjustments = [
+        ("minus_10pct", 0.9),
+        ("plus_10pct", 1.1),
+    ]
+
+    base_run_name = best_model_info.get("run_name", f"{model_type}_best")
+
+    for label, factor in adjustments:
+        tuned_params = _scale_params_by_factor(base_params, factor)
+        if tuned_params == base_params:
+            logger.info("La variación %s no modificó los parámetros, se omite.", label)
+            continue
+
+        run_name = f"{base_run_name}_{label}"
+        logger.info("Entrenando variante '%s' con parámetros: %s", label, tuned_params)
+        tuned_result = _train_and_log_model(
+            model_type=model_type,
+            model_params=tuned_params,
+            run_name=run_name,
+            context=context
+        )
+        tuned_result["tuning_label"] = label
+        tuning_candidates.append({
+            "label": label,
+            "params": tuned_params,
+            "result": tuned_result
+        })
+
+    best_candidate = max(tuning_candidates, key=lambda candidate: _extract_accuracy(candidate["result"]))
+    best_accuracy = _extract_accuracy(best_candidate["result"])
+
+    logger.info("Mejor variante tras ajuste: %s con accuracy %.4f", best_candidate["label"], best_accuracy)
+    logger.info("Parámetros finales seleccionados: %s", best_candidate["params"])
+
+    Variable.set("best_model_tuning_label", best_candidate["label"])
+    Variable.set("best_model_tuned_params", str(best_candidate["params"]))
+    Variable.set("best_model_tuned_accuracy", str(best_accuracy))
+
+    return {
+        "model_type": model_type,
+        "selected_variant": best_candidate["label"],
+        "best_params": best_candidate["params"],
+        "best_accuracy": best_accuracy,
+        "evaluated_variants": [
+            {
+                "label": candidate["label"],
+                "accuracy": _extract_accuracy(candidate["result"]),
+                "params": candidate["params"]
+            }
+            for candidate in tuning_candidates
+        ]
+    }
+
 # Definir tareas del DAG
 setup_mlflow_task = PythonOperator(
     task_id='setup_mlflow',
@@ -468,13 +580,6 @@ preprocess_data_task = PythonOperator(
     dag=dag
 )
 
-# train_model_task = PythonOperator(
-#     task_id='train_model',
-#     python_callable=train_model,
-#     pool="ml_training_pool",
-#     pool_slots=1,
-#     dag=dag
-# )
 
 # Distintos modelos de entrenamiento (en paralelo)
 train_rf = PythonOperator(
@@ -497,13 +602,6 @@ train_svm = PythonOperator(
     op_kwargs={"model_type": "svm"},
     dag=dag
 )
-
-
-# evaluate_model_task = PythonOperator(
-#     task_id='evaluate_model',
-#     python_callable=evaluate_model,
-#     dag=dag
-# )
 
 # Evaluar los distintos modelos
 evaluate_rf_task = PythonOperator(
@@ -534,54 +632,18 @@ select_best_model_task = PythonOperator(
     dag=dag
 )
 
+tune_best_model_task = PythonOperator(
+    task_id='tune_best_model',
+    python_callable=tune_best_model,
+    dag=dag
+)
+
 cleanup_models_task = PythonOperator(
     task_id='cleanup_old_models',
     python_callable=cleanup_old_models,
     dag=dag
 )
 
-# compare_models_task = PythonOperator(
-#     task_id='compare_models',
-#     python_callable=compare_models,
-#     dag=dag
-# )
-
-# rf_depth10_task = PythonOperator(
-#     task_id="train_rf_depth10",
-#     python_callable=run_single_training,
-#     op_kwargs={
-#         "params": {"n_estimators": 100, "max_depth": 10, "min_samples_split": 5,
-#                    "min_samples_leaf": 2, "random_state": 42},
-#         "run_name": "rf_depth10",
-#     },
-#     pool="ml_training_pool",
-#     pool_slots=1,
-#     dag=dag,
-# )
-
-# rf_depth6_task = PythonOperator(
-#     task_id="train_rf_depth6",
-#     python_callable=run_single_training,
-#     op_kwargs={
-#         "params": {"n_estimators": 200, "max_depth": 6, "min_samples_split": 4,
-#                    "min_samples_leaf": 1, "random_state": 123},
-#         "run_name": "rf_depth6",
-#     },
-#     pool="ml_training_pool",
-#     pool_slots=1,
-#     dag=dag,
-# )
-
-
-# Definir dependencias
-# setup_mlflow_task >> extract_data_task >> preprocess_data_task
-
-# preprocess_data_task >> train_model_task >> evaluate_model_task
-
-# # Ejecutar variantes en paralelo una vez que el modelo base fue evaluado
-# evaluate_model_task >> [rf_depth10_task, rf_depth6_task]
-
-# [rf_depth10_task, rf_depth6_task] >> compare_models_task >> cleanup_models_task
 
 # Definir dependencias
 setup_mlflow_task >>  extract_data_task >> preprocess_data_task
@@ -596,4 +658,4 @@ train_svm >> evaluate_svm_task
 
 [evaluate_rf_task, evaluate_lr_task, evaluate_svm_task] >> select_best_model_task
 
-select_best_model_task >> cleanup_models_task
+select_best_model_task >> tune_best_model_task >> cleanup_models_task
