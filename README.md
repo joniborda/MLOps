@@ -199,6 +199,28 @@ Una vez iniciados los contenedores, las interfaces están disponibles en las sig
 | **FastAPI** | `http://localhost:8800` | - | - |
 | **API Docs** | `http://localhost:8800/docs` | - | - |
 
+#### Pipeline con ajuste automático de hiperparámetros
+
+1. Inicia sesión en Airflow y activa el DAG `mlops_pipeline`.  
+2. Lanza una ejecución manual (`Play → Trigger DAG w/ config`).  
+3. El DAG ejecuta las etapas siguientes:
+   1. `extract_data`: carga el dataset (real o sintético) y lo deja en MinIO.
+   2. `preprocess_data`: limpia, escala y genera `train/test`, guardando los archivos en `/tmp` y en MinIO.
+   3. `train_random_forest`, `train_logistic_regression`, `train_svm`: cada tarea lee los datos procesados y entrena su modelo con los parámetros definidos en `airflow/config/model_params.yaml`.
+   4. `evaluate_*`: cada modelo se evalúa en el set de test y deja métricas/artefactos en MLflow.
+   5. `select_best_model`: compara el `accuracy` de las tres evaluaciones y devuelve el mejor.
+4. A continuación corre `tune_best_model`, que reentrena el modelo ganador aplicando ±10 % a los hiperparámetros numéricos (se excluyen `random_state` y valores booleanos) y se queda con la variante de mayor `accuracy`.  
+5. Las métricas y parámetros resultantes quedan disponibles en las Variables de Airflow:
+   - `best_model_tuning_label`
+   - `best_model_tuned_params`
+   - `best_model_tuned_accuracy`
+6. Si realizas cambios en el DAG, fuerza la recarga sin reiniciar todo el stack con:
+   ```bash
+   docker compose exec -T airflow-scheduler airflow dags reserialize -d mlops_pipeline
+   ```
+
+> 💡 Recomendación: para que el ajuste del modelo SVM no sea finalizado por falta de memoria, reserva al menos 6 GB de RAM para Docker (el default de 4 GB suele quedarse corto).
+
 #### Ejecutar el Pipeline de Machine Learning
 
 1.  Acceder a la interfaz de **Airflow**: `http://localhost:8080`.
@@ -413,5 +435,3 @@ Las contribuciones a este proyecto son bienvenidas.
 ## Licencia
 
 Este proyecto se distribuye bajo la Licencia Apache 2.0. Consulte el archivo `LICENSE` para más detalles.
-
-
