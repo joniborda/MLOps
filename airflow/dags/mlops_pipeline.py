@@ -257,10 +257,24 @@ def _train_and_log_model(model_type = 'random_forest', model_params=None, run_na
         mlflow.log_params({**model_params, "train_samples": len(X_train), "test_samples": len(X_test)})
         mlflow.log_metrics(metrics)
 
+        logger.info("Obteniendo nombre del modelo para registro en MLflow...")
         model_name = os.getenv("AIRFLOW_VAR_MODEL_NAME")
+
         if model_name is None:
+            logger.info(f"No se encontró el nombre del modelo. Se asigna: {model_type}_classifier")
+            
             model_name = Variable.get("model_name", default_var=f"{model_type}_classifier")
-        mlflow.sklearn.log_model(model.model, "model", registered_model_name=model_name)
+        else:
+            logger.info(f'Nombre del modelo encontrado {model_name}')
+
+        logger.info("Obteniendo ejemplo de entrada para registro en MLflow...")
+        input_example = X_train.iloc[:5] if hasattr(X_train, "iloc") else X_train[:5]
+        input_example = input_example.astype({col: "float64" for col in input_example.select_dtypes("int").columns}) # Se pasan int a float64 para evitar problemas de tipo en MLflow    
+        mlflow.sklearn.log_model(model.model,
+                                 "model", 
+                                 registered_model_name=model_name,
+                                 input_example=input_example
+                                 )
 
         ts_suffix = context.get('ts_nodash')
         if ts_suffix is None and 'logical_date' in context:
@@ -378,48 +392,6 @@ def cleanup_old_models(**context):
         logger.error(f"Error en limpieza de modelos: {str(e)}")
     
     return "Limpieza completada"
-
-
-# def compare_models(**context):
-#     """Comparar resultados de entrenamiento y registrar el mejor modelo."""
-#     logger.info("Comparando variantes de modelos...")
-
-#     task_instance = context['task_instance']
-#     task_ids = ['train_model', 'train_rf_depth10', 'train_rf_depth6']
-#     results = []
-
-#     for task_id in task_ids:
-#         result = task_instance.xcom_pull(task_ids=task_id)
-#         if result:
-#             result_copy = result.copy()
-#             result_copy['source_task'] = task_id
-#             results.append(result_copy)
-#             logger.info(
-#                 "Resultados %s -> accuracy: %s",
-#                 result_copy.get('run_name', task_id),
-#                 result_copy.get('accuracy')
-#             )
-#         else:
-#             logger.warning("No se encontraron resultados para la tarea %s", task_id)
-
-#     if not results:
-#         logger.error("No hay resultados para comparar")
-#         raise ValueError("No se encontraron resultados de entrenamiento para comparar")
-
-#     def accuracy_key(item):
-#         accuracy = item.get('accuracy')
-#         return accuracy if accuracy is not None else float('-inf')
-
-#     best_model = max(results, key=accuracy_key)
-
-#     logger.info(
-#         "Mejor variante: %s (tarea %s) con accuracy %.4f",
-#         best_model.get('run_name', best_model['source_task']),
-#         best_model['source_task'],
-#         best_model.get('accuracy', 0.0)
-#     )
-
-#     return best_model
 
 def select_best_model(**context):
     logger.info("Seleccionando el mejor modelo...")
