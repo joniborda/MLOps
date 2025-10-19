@@ -394,6 +394,12 @@ def cleanup_old_models(**context):
     return "Limpieza completada"
 
 def select_best_model(**context):
+
+    setup_mlflow()
+    import mlflow
+    import mlflow.sklearn
+    from joblib import load
+
     logger.info("Seleccionando el mejor modelo...")
 
     # Recuperar resultados de evaluación de cada modelo
@@ -423,6 +429,19 @@ def select_best_model(**context):
     logger.info(f"Variables guardadas:")
     logger.info(f"  - best_model_type: {registered_name}")
     logger.info(f"  - best_model_accuracy: {best_model.get('accuracy'):.4f}")
+
+    # Registrar el modelo ganador en MLflow
+    try:
+        logger.info(f"Registrando modelo ganador en MLflow: {registered_name}")
+        model = load(best_model['local_model_path'])
+
+        mlflow.sklearn.log_model(model, 
+                                 "model", 
+                                 registered_model_name=registered_name)
+        
+        logger.info(f"Modelo ganador registrado correctamente en MLflow con nombre '{registered_name}'")
+    except Exception as e:
+        logger.error(f"Error registrando modelo en MLflow: {str(e)}")
 
     return best_model
 
