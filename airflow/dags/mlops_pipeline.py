@@ -261,11 +261,11 @@ def _train_and_log_model(model_type = 'random_forest', model_params=None, run_na
         model_name = os.getenv("AIRFLOW_VAR_MODEL_NAME")
 
         if model_name is None:
-            logger.info(f"No se encontró el nombre del modelo. Se asigna: {model_type}_classifier")
-            
+            logger.info(f"Nombre del modelo: {model_type}_classifier")
+
             model_name = Variable.get("model_name", default_var=f"{model_type}_classifier")
         else:
-            logger.info(f'Nombre del modelo encontrado {model_name}')
+            logger.info(f'Nombre del modelo: {model_name}')
 
         logger.info("Obteniendo ejemplo de entrada para registro en MLflow...")
         input_example = X_train.iloc[:5] if hasattr(X_train, "iloc") else X_train[:5]
@@ -415,11 +415,13 @@ def select_best_model(**context):
 
     # Guardar como Variable global de Airflow (opcional)
     logger.info(f"Guardando Variable global de Airflow:")
-    Variable.set("best_model_type", str(best_model.get('model_type', '')))
+    registered_name = "heart_disease_classifier"
+    Variable.set("best_model_type", registered_name)
     Variable.set("best_model_accuracy", str(best_model.get('accuracy', 0)))
 
+    logger.info(f"Mejor modelo registrado como '{registered_name}'")
     logger.info(f"Variables guardadas:")
-    logger.info(f"  - best_model_type: {best_model.get('model_type')}")
+    logger.info(f"  - best_model_type: {registered_name}")
     logger.info(f"  - best_model_accuracy: {best_model.get('accuracy'):.4f}")
 
     return best_model
