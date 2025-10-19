@@ -18,6 +18,11 @@ import sys
 import logging
 from typing import Any, Dict
 import copy
+import requests
+import json
+
+
+
 
 # Agregar el directorio scripts al path
 sys.path.append('/opt/airflow/scripts')
@@ -561,6 +566,24 @@ def tune_best_model(**context):
         ]
     }
 
+# Función para notificar a FastAPI sobre la recarga del modelo
+def notify_fastapi_reload(**context):
+    """Notificar a la API FastAPI que recargue el modelo."""
+
+    logger = logging.getLogger(__name__)
+    fastapi_url = os.getenv("FASTAPI_URL", "http://fastapi:8800/model/reload")
+
+    logger.info(f"Llamando a la API FastAPI para recargar modelo: {fastapi_url}")
+
+    try:
+        response = requests.post(fastapi_url)
+        if response.status_code == 200:
+            logger.info("FastAPI recargó el modelo correctamente.")
+        else:
+            logger.warning(f"Fallo al recargar el modelo: {response.status_code} {response.text}")
+    except Exception as e:
+        logger.error(f"Error conectando con FastAPI: {e}")
+
 # Definir tareas del DAG
 setup_mlflow_task = PythonOperator(
     task_id='setup_mlflow',
@@ -644,6 +667,13 @@ cleanup_models_task = PythonOperator(
     dag=dag
 )
 
+notify_fastapi_reload_task = PythonOperator(
+    task_id='notify_fastapi_reload',
+    python_callable=notify_fastapi_reload,
+    retries=3,
+    retry_delay=timedelta(minutes=2),
+    dag=dag
+)
 
 # Definir dependencias
 setup_mlflow_task >>  extract_data_task >> preprocess_data_task
@@ -658,4 +688,5 @@ train_svm >> evaluate_svm_task
 
 [evaluate_rf_task, evaluate_lr_task, evaluate_svm_task] >> select_best_model_task
 
-select_best_model_task >> tune_best_model_task >> cleanup_models_task
+tune_best_model_task >> cleanup_models_task >> notify_fastapi_reload_task
+

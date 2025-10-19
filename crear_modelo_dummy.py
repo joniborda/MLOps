@@ -17,4 +17,4 @@ model.fit(X, y)
 # Guardar modelo
 joblib.dump(model, "models/model.pkl")
 
-print("✅ Modelo dummy guardado correctamente en 'models/model.pkl'")
+print("Modelo dummy guardado correctamente en 'models/model.pkl'")
