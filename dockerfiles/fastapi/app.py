@@ -166,11 +166,11 @@ def get_model_info():
     }
 
 @app.post("/model/reload")
-def reload_model():
+async def reload_model():
     """Reload the latest model from MLflow"""
     global model, model_version
     try:
-        load_model()
+        await load_model()
         return {"message": "Model reloaded successfully", "version": model_version}
     except Exception as e:
         logger.error(f"Model reload error: {str(e)}")
