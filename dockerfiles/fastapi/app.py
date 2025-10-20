@@ -34,6 +34,7 @@ s3_client = boto3.client(
 # Global variable to store the loaded model
 model = None
 model_version = None
+model_info = None
 
 class PredictionRequest(BaseModel):
     """Request model for predictions"""
@@ -61,7 +62,7 @@ class HealthResponse(BaseModel):
 @app.on_event("startup")
 async def load_model():
     """Load the latest model from MLflow on startup"""
-    global model, model_version
+    global model, model_version, model_info
     try:
         # Get the latest model version
         client = mlflow.tracking.MlflowClient()
@@ -74,12 +75,28 @@ async def load_model():
             
             # Load the model
             model = mlflow.sklearn.load_model(model_uri)
-            logger.info(f"Model loaded successfully. Version: {model_version}")
+            if model is None:
+                raise Exception("No se pudo cargar el modelo")
+            else:
+                logger.info(f"Modelo cargado correctamente. Version: {model_version}")
+                
+                run = client.get_run(latest_version.run_id)
+                model_info = {
+                    "model_type": run.data.params.get("model_type"),
+                    "n_features": run.data.params.get("n_features"),
+                    "metrics": run.data.metrics,
+                    "model_params": {k: v for k, v in run.data.params.items() 
+                               if k not in ["model_type", "n_features"]}
+                }
+                logger.info(f"Información del modelo cargada: {model_info}")
+
         else:
-            logger.warning("No model found in MLflow registry")
+            logger.warning("No se encontró un modelo registrado en MLflow")
             
     except Exception as e:
-        logger.error(f"Error loading model: {str(e)}")
+        logger.error(f"Error cargando modelo: {str(e)}")
+
+
 
 @app.get("/", response_model=Dict[str, str])
 def read_root():
@@ -139,10 +156,17 @@ def get_model_info():
     if model is None:
         raise HTTPException(status_code=404, detail="No model loaded")
     
+    # return {
+    #     "model_type": type(model).__name__,
+    #     "version": model_version,
+    #     "features_expected": getattr(model, 'n_features_in_', 'unknown')
+    # }
     return {
-        "model_type": type(model).__name__,
+        "model_type": model_info["model_type"],
         "version": model_version,
-        "features_expected": getattr(model, 'n_features_in_', 'unknown')
+        "features_expected": model_info["n_features"],
+        "accuracy": model_info["metrics"].get("accuracy"),
+        "model_params": model_info["model_params"]
     }
 
 @app.post("/model/reload")

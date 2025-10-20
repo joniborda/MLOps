@@ -66,13 +66,6 @@ def create_s3_client():
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "minio123")
     )
 
-
-# def create_model(random_state=42):
-#     """Instanciar el modelo sin cargarlo durante el parseo del DAG."""
-#     from DummyModel import DummyModel
-
-#     return DummyModel(random_state=random_state)
-
 def setup_mlflow():
     """Configurar MLflow"""
     import mlflow
@@ -262,10 +255,24 @@ def _train_and_log_model(model_type = 'random_forest', model_params=None, run_na
         mlflow.log_params({**model_params, "train_samples": len(X_train), "test_samples": len(X_test)})
         mlflow.log_metrics(metrics)
 
+        logger.info("Obteniendo nombre del modelo para registro en MLflow...")
         model_name = os.getenv("AIRFLOW_VAR_MODEL_NAME")
+
         if model_name is None:
+            logger.info(f"Nombre del modelo: {model_type}_classifier")
+
             model_name = Variable.get("model_name", default_var=f"{model_type}_classifier")
-        mlflow.sklearn.log_model(model.model, "model", registered_model_name=model_name)
+        else:
+            logger.info(f'Nombre del modelo: {model_name}')
+
+        logger.info("Obteniendo ejemplo de entrada para registro en MLflow...")
+        input_example = X_train.iloc[:5] if hasattr(X_train, "iloc") else X_train[:5]
+        input_example = input_example.astype({col: "float64" for col in input_example.select_dtypes("int").columns}) # Se pasan int a float64 para evitar problemas de tipo en MLflow    
+        mlflow.sklearn.log_model(model.model,
+                                 "model", 
+                                 registered_model_name=model_name,
+                                 input_example=input_example
+                                 )
 
         ts_suffix = context.get('ts_nodash')
         if ts_suffix is None and 'logical_date' in context:
@@ -384,49 +391,13 @@ def cleanup_old_models(**context):
     
     return "Limpieza completada"
 
-
-# def compare_models(**context):
-#     """Comparar resultados de entrenamiento y registrar el mejor modelo."""
-#     logger.info("Comparando variantes de modelos...")
-
-#     task_instance = context['task_instance']
-#     task_ids = ['train_model', 'train_rf_depth10', 'train_rf_depth6']
-#     results = []
-
-#     for task_id in task_ids:
-#         result = task_instance.xcom_pull(task_ids=task_id)
-#         if result:
-#             result_copy = result.copy()
-#             result_copy['source_task'] = task_id
-#             results.append(result_copy)
-#             logger.info(
-#                 "Resultados %s -> accuracy: %s",
-#                 result_copy.get('run_name', task_id),
-#                 result_copy.get('accuracy')
-#             )
-#         else:
-#             logger.warning("No se encontraron resultados para la tarea %s", task_id)
-
-#     if not results:
-#         logger.error("No hay resultados para comparar")
-#         raise ValueError("No se encontraron resultados de entrenamiento para comparar")
-
-#     def accuracy_key(item):
-#         accuracy = item.get('accuracy')
-#         return accuracy if accuracy is not None else float('-inf')
-
-#     best_model = max(results, key=accuracy_key)
-
-#     logger.info(
-#         "Mejor variante: %s (tarea %s) con accuracy %.4f",
-#         best_model.get('run_name', best_model['source_task']),
-#         best_model['source_task'],
-#         best_model.get('accuracy', 0.0)
-#     )
-
-#     return best_model
-
 def select_best_model(**context):
+
+    setup_mlflow()
+    import mlflow
+    import mlflow.sklearn
+    from joblib import load
+
     logger.info("Seleccionando el mejor modelo...")
 
     # Recuperar resultados de evaluación de cada modelo
@@ -448,12 +419,41 @@ def select_best_model(**context):
 
     # Guardar como Variable global de Airflow (opcional)
     logger.info(f"Guardando Variable global de Airflow:")
-    Variable.set("best_model_type", str(best_model.get('model_type', '')))
+    registered_name = "heart_disease_classifier"
+    Variable.set("best_model_type", registered_name)
     Variable.set("best_model_accuracy", str(best_model.get('accuracy', 0)))
 
+    logger.info(f"Mejor modelo registrado como '{registered_name}'")
     logger.info(f"Variables guardadas:")
-    logger.info(f"  - best_model_type: {best_model.get('model_type')}")
+    logger.info(f"  - best_model_type: {registered_name}")
     logger.info(f"  - best_model_accuracy: {best_model.get('accuracy'):.4f}")
+
+    # Registrar el modelo ganador en MLflow
+    try:
+        logger.info(f"Registrando modelo ganador en MLflow: {registered_name}")
+        model = load(best_model['local_model_path'])
+
+        # Extraer información del modelo
+        model_info = {
+            "model_type": best_model['model_type'],
+            "metrics": best_model['metrics'],
+            "model_params": best_model['model_params'],
+            "n_features_in": getattr(model, 'n_features_in_', 'unknown'),
+        }
+
+        with mlflow.start_run(run_name=f"best_model_{model_info['model_type']}"):
+            mlflow.log_params(model_info['model_params'])
+            mlflow.log_metrics(model_info['metrics'])
+            mlflow.log_param("model_type", model_info['model_type'])
+            mlflow.log_param("n_features", model_info['n_features_in'])
+
+        mlflow.sklearn.log_model(model, 
+                                 "model", 
+                                 registered_model_name=registered_name)
+        
+        logger.info(f"Modelo ganador registrado correctamente en MLflow con nombre '{registered_name}'")
+    except Exception as e:
+        logger.error(f"Error registrando modelo en MLflow: {str(e)}")
 
     return best_model
 
