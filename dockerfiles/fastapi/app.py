@@ -66,32 +66,28 @@ async def load_model():
     try:
         # Get the latest model version
         client = mlflow.tracking.MlflowClient()
-        latest_versions = client.get_latest_versions("heart_disease_classifier")
+        versions = client.search_model_versions("name='heart_disease_classifier'")
+        latest_version = max(versions, key=lambda v: int(v.version))
+        model_uri = f"models:/heart_disease_classifier/{latest_version.version}"
         
-        if latest_versions:
-            latest_version = latest_versions[0]
-            model_version = latest_version.version
-            model_uri = f"models:/heart_disease_classifier/{model_version}"
-            
-            # Load the model
-            model = mlflow.sklearn.load_model(model_uri)
-            if model is None:
-                raise Exception("No se pudo cargar el modelo")
-            else:
-                logger.info(f"Modelo cargado correctamente. Version: {model_version}")
-                
-                run = client.get_run(latest_version.run_id)
-                model_info = {
-                    "model_type": run.data.params.get("model_type"),
-                    "n_features": run.data.params.get("n_features"),
-                    "metrics": run.data.metrics,
-                    "model_params": {k: v for k, v in run.data.params.items() 
-                               if k not in ["model_type", "n_features"]}
-                }
-                logger.info(f"Información del modelo cargada: {model_info}")
-
+        model_version = latest_version.version
+        
+        # Load the model
+        model = mlflow.sklearn.load_model(model_uri)
+        if model is None:
+            raise Exception("No se pudo cargar el modelo")
         else:
-            logger.warning("No se encontró un modelo registrado en MLflow")
+            logger.info(f"Modelo cargado correctamente. Version: {model_version}")
+            
+            run = client.get_run(latest_version.run_id)
+            model_info = {
+                "model_type": run.data.params.get("model_type"),
+                "n_features": run.data.params.get("n_features"),
+                "metrics": run.data.metrics,
+                "model_params": {k: v for k, v in run.data.params.items() 
+                            if k not in ["model_type", "n_features"]}
+            }
+            logger.info(f"Información del modelo cargada: {model_info}")
             
     except Exception as e:
         logger.error(f"Error cargando modelo: {str(e)}")
