@@ -61,13 +61,6 @@ def create_s3_client():
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "minio123")
     )
 
-
-# def create_model(random_state=42):
-#     """Instanciar el modelo sin cargarlo durante el parseo del DAG."""
-#     from DummyModel import DummyModel
-
-#     return DummyModel(random_state=random_state)
-
 def setup_mlflow():
     """Configurar MLflow"""
     import mlflow
@@ -434,6 +427,20 @@ def select_best_model(**context):
     try:
         logger.info(f"Registrando modelo ganador en MLflow: {registered_name}")
         model = load(best_model['local_model_path'])
+
+        # Extraer información del modelo
+        model_info = {
+            "model_type": best_model['model_type'],
+            "metrics": best_model['metrics'],
+            "model_params": best_model['model_params'],
+            "n_features_in": getattr(model, 'n_features_in_', 'unknown'),
+        }
+
+        with mlflow.start_run(run_name=f"best_model_{model_info['model_type']}"):
+            mlflow.log_params(model_info['model_params'])
+            mlflow.log_metrics(model_info['metrics'])
+            mlflow.log_param("model_type", model_info['model_type'])
+            mlflow.log_param("n_features", model_info['n_features_in'])
 
         mlflow.sklearn.log_model(model, 
                                  "model", 
